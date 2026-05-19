@@ -117,9 +117,13 @@ proj_file_manager() {
         local is_delete=false
         [[ -s "$_act_f" ]] && is_delete=true
 
-        # ── Стрелка влево / ← — подняться выше ──────────────────────────────
+        # ── Стрелка влево / ← — подняться выше или выйти в меню ────────────
         if [[ "$key" == "left" ]]; then
-            [[ "$current_dir" != "$SSD_PROJECTS_ROOT" ]] && current_dir="${current_dir:h}"
+            if [[ "$current_dir" != "$SSD_PROJECTS_ROOT" ]]; then
+                current_dir="${current_dir:h}"
+            else
+                break
+            fi
 
         # ── Del / ⌫ — удаление ───────────────────────────────────────────────
         elif $is_delete; then
