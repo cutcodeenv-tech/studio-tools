@@ -1,0 +1,28 @@
+#!/bin/zsh
+
+REPO_DIR="${0:A:h}"
+cd "$REPO_DIR"
+
+print -P "\n%B%F{cyan}Studio Tools — Git Push%f%b\n"
+
+# Показываем изменения
+git status --short
+
+if [[ -z "$(git status --porcelain)" ]]; then
+    print -P "\n%F{yellow}Нет изменений для коммита.%f\n"
+    exit 0
+fi
+
+print -P "\n%B%F{cyan}│%f%b Сообщение коммита: \c"
+read COMMIT_MSG
+
+if [[ -z "$COMMIT_MSG" ]]; then
+    print -P "%F{red}Отменено.%f\n"
+    exit 0
+fi
+
+git add -A
+git commit -m "$COMMIT_MSG"
+git push
+
+print -P "\n%F{green}%B✅ Загружено на GitHub.%f%b\n"
