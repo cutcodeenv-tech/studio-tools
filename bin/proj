@@ -455,16 +455,14 @@ elif [[ "$action" == *"Синхронизировать footage"* ]]; then
     synced=0
     skipped=0
 
-    for hdd_cam in "${HDD_PROJECT}/02_Sources/Video"/Cam_*/; do
-        [[ -d "$hdd_cam" ]] || continue
+    for hdd_cam in "${HDD_PROJECT}/02_Sources/Video"/Cam_*(N/); do
         cam_name=$(basename "$hdd_cam")
         ssd_cam="${SSD_PROJECT}/02_Sources/Video/${cam_name}"
 
         mkdir -p "${ssd_cam}/Proxy"
         print -P "%B%F{cyan}📁 ${cam_name}%f%b"
 
-        for hdd_file in "${hdd_cam}"*; do
-            [[ -f "$hdd_file" ]] || continue
+        for hdd_file in "${hdd_cam}/"*(N-.); do
             filename=$(basename "$hdd_file")
             ssd_link="${ssd_cam}/${filename}"
 
@@ -477,24 +475,23 @@ elif [[ "$action" == *"Синхронизировать footage"* ]]; then
             fi
         done
 
-        if [[ -d "${hdd_cam}Proxy" ]]; then
-            for proxy_file in "${hdd_cam}Proxy/"*; do
-                [[ -f "$proxy_file" ]] || continue
-                filename=$(basename "$proxy_file")
-                ssd_proxy="${ssd_cam}/Proxy/${filename}"
+        for proxy_file in "${hdd_cam}/Proxy/"*(N-.); do
+            filename=$(basename "$proxy_file")
+            ssd_proxy="${ssd_cam}/Proxy/${filename}"
 
-                if [[ ! -e "$ssd_proxy" ]]; then
-                    copy_with_progress "$proxy_file" "$ssd_proxy" "Proxy/${filename}"
-                    (( synced++ ))
-                else
-                    (( skipped++ ))
-                fi
-            done
-        fi
+            if [[ ! -e "$ssd_proxy" ]]; then
+                copy_with_progress "$proxy_file" "$ssd_proxy" "Proxy/${filename}" || true
+                (( synced++ ))
+            else
+                (( skipped++ ))
+            fi
+        done
     done
 
-    print -P "\n%F{green}%B✅ Готово:%b ${synced} новых, ${skipped} пропущено.%f\n"
     afplay /System/Library/Sounds/Glass.aiff 2>/dev/null || true
+    print -P "\n%F{green}%B✅ Синхронизация завершена:%b ${synced} новых, ${skipped} уже было.%f"
+    print -P "%F{240}  Enter — в главное меню%f"
+    read -rs _
 
 # ── ОБНОВИТЬ ─────────────────────────────────────────────────────────────────
 elif [[ "$action" == *"Обновить"* ]]; then
