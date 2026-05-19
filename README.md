@@ -62,6 +62,14 @@ HDD_SOURCES_ROOT="/Volumes/HDD_1"
 PREMIERE_TEMPLATE="/Volumes/01_Extreme SSD/[003] Resurces/00_TEMPLATE1.prproj"
 ```
 
+## Удаление
+
+```zsh
+~/.studio-tools/uninstall.sh
+```
+
+Удаляет `~/bin/proj`, `~/.studio-tools` и убирает PATH из `~/.zshrc`.
+
 ## Обновление
 
 ```zsh
