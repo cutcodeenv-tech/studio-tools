@@ -45,14 +45,14 @@ copy_with_progress() {
     done
 
     wait $cp_pid
-    local status=$?
+    local _rc=$?
     local full_bar=$(printf '█%.0s' {1..$bar_width})
-    if (( status == 0 )); then
+    if (( _rc == 0 )); then
         printf "\r  \033[32m✓\033[0m  \033[90m[%s]\033[0m 100%%  %s\n" "$full_bar" "$label"
     else
         printf "\r  \033[31m✗\033[0m  копирование не удалось: %s\n" "$label"
     fi
-    return $status
+    return $_rc
 }
 
 # ── ФАЙЛОВЫЙ МЕНЕДЖЕР ────────────────────────────────────────────────────────
