@@ -18,6 +18,38 @@ action=$(printf "Новый проект\nСинхронизировать foota
 
 [[ -z "$action" ]] && exit 0
 
+# ── ПРОГРЕСС-БАР КОПИРОВАНИЯ ─────────────────────────────────────────────────
+copy_with_progress() {
+    local src="$1" dst="$2" label="$3"
+    local total=$(stat -f%z "$src" 2>/dev/null || echo 1)
+    local bar_width=30
+
+    cp "$src" "$dst" &
+    local cp_pid=$!
+
+    while kill -0 $cp_pid 2>/dev/null; do
+        local current=$(stat -f%z "$dst" 2>/dev/null || echo 0)
+        local pct=$(( current * 100 / total ))
+        local filled=$(( pct * bar_width / 100 ))
+        local bar=""
+        for (( j=0; j<bar_width; j++ )); do
+            (( j < filled )) && bar+="█" || bar+="░"
+        done
+        printf "\r  \033[33m⬇\033[0m  \033[90m[%s]\033[0m %3d%%  %s" "$bar" "$pct" "$label"
+        sleep 0.15
+    done
+
+    wait $cp_pid
+    local status=$?
+    local full_bar=$(printf '█%.0s' {1..$bar_width})
+    if (( status == 0 )); then
+        printf "\r  \033[32m✓\033[0m  \033[90m[%s]\033[0m 100%%  %s\n" "$full_bar" "$label"
+    else
+        printf "\r  \033[31m✗\033[0m  копирование не удалось: %s\n" "$label"
+    fi
+    return $status
+}
+
 # ── НОВЫЙ ПРОЕКТ ─────────────────────────────────────────────────────────────
 if [[ "$action" == "Новый проект" ]]; then
 
@@ -152,11 +184,8 @@ elif [[ "$action" == "Синхронизировать footage" ]]; then
                 ssd_proxy="${ssd_cam}/Proxy/${filename}"
 
                 if [[ ! -e "$ssd_proxy" ]]; then
-                    filesize=$(du -sh "$proxy_file" 2>/dev/null | cut -f1)
-                    print -P "  %F{yellow}⬇%f copy     Proxy/${filename} %F{240}(${filesize})%f"
-                    cp "$proxy_file" "$ssd_proxy"
+                    copy_with_progress "$proxy_file" "$ssd_proxy" "Proxy/${filename}"
                     (( synced++ ))
-                    print -P "  %F{green}✓%f done     Proxy/${filename}"
                 else
                     (( skipped++ ))
                 fi
