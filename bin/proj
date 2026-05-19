@@ -4,7 +4,24 @@
 SSD_PROJECTS_ROOT="/Volumes/01_Extreme SSD/[001] Projects"
 HDD_SOURCES_ROOT="/Volumes/HDD_1"
 PREMIERE_TEMPLATE="/Volumes/01_Extreme SSD/[003] Resurces/00_TEMPLATE1.prproj"
+STUDIO_DIR="$HOME/.studio-tools"
+_UPDATE_FILE="${STUDIO_DIR}/.update_available"
+_UPDATE_CACHE="${STUDIO_DIR}/.update_cache"
 # ────────────────────────────────────────────────────────────────────────────
+
+# ── CLI: proj update ─────────────────────────────────────────────────────────
+if [[ "$1" == "update" ]]; then
+    print -P "\n%B%F{cyan}Обновление Studio Tools...%f%b\n"
+    if git -C "$STUDIO_DIR" pull; then
+        cp "${STUDIO_DIR}/bin/proj" "$HOME/bin/proj" && chmod +x "$HOME/bin/proj"
+        rm -f "$_UPDATE_FILE"
+        local_ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null)
+        print -P "\n%F{green}%B✅ Обновлено до ${local_ver}. Перезапусти proj.%f%b\n"
+    else
+        print -P "\n%F{red}✗ Ошибка обновления%f\n"
+    fi
+    exit 0
+fi
 
 # ── ПРОГРЕСС-БАР КОПИРОВАНИЯ ─────────────────────────────────────────────────
 copy_with_progress() {
@@ -228,18 +245,43 @@ proj_file_manager() {
     rm -f "$_act_f" "$_mod_f"
 }
 
+# ── ВЕРСИЯ И ПРОВЕРКА ОБНОВЛЕНИЙ ─────────────────────────────────────────────
+PROJ_VERSION=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
+
+# Фоновая проверка раз в 6 часов — не блокирует запуск
+(
+    if [[ ! -f "$_UPDATE_CACHE" ]] || \
+       (( $(date +%s) - $(stat -f%m "$_UPDATE_CACHE" 2>/dev/null || echo 0) > 21600 )); then
+        touch "$_UPDATE_CACHE"
+        if git -C "$STUDIO_DIR" fetch origin main --quiet 2>/dev/null; then
+            behind=$(git -C "$STUDIO_DIR" rev-list HEAD..origin/main --count 2>/dev/null)
+            if (( behind > 0 )); then
+                echo "$behind" > "$_UPDATE_FILE"
+            else
+                rm -f "$_UPDATE_FILE"
+            fi
+        fi
+    fi
+) &>/dev/null &
+
 # ── ГЛАВНЫЙ ЦИКЛ ─────────────────────────────────────────────────────────────
 print -P "%F{240}  Ctrl+C для выхода%f"
 
 while true; do
 
 # ── МЕНЮ ────────────────────────────────────────────────────────────────────
-action=$(printf "1  Новый проект\n2  Проекты\n3  Статус проекта\n4  Синхронизировать footage" | fzf \
+_MENU="1  Новый проект\n2  Проекты\n3  Статус проекта\n4  Синхронизировать footage"
+if [[ -f "$_UPDATE_FILE" ]]; then
+    _behind=$(cat "$_UPDATE_FILE")
+    _MENU+="\\n5  ⬆  Обновить  (${_behind} новых коммит(а))"
+fi
+
+action=$(printf "$_MENU" | fzf \
     --prompt="  > " \
-    --height=10 \
+    --height=12 \
     --layout=reverse \
     --border=rounded \
-    --border-label=" proj " \
+    --border-label=" proj ${PROJ_VERSION} " \
     --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
     --pointer="▶" \
     --no-multi)
@@ -449,6 +491,20 @@ elif [[ "$action" == *"Синхронизировать footage"* ]]; then
 
     print -P "\n%F{green}%B✅ Готово:%b ${synced} новых, ${skipped} пропущено.%f\n"
     afplay /System/Library/Sounds/Glass.aiff 2>/dev/null || true
+
+# ── ОБНОВИТЬ ─────────────────────────────────────────────────────────────────
+elif [[ "$action" == *"Обновить"* ]]; then
+
+    print -P "\n%B%F{cyan}Обновление Studio Tools...%f%b\n"
+    if git -C "$STUDIO_DIR" pull; then
+        cp "${STUDIO_DIR}/bin/proj" "$HOME/bin/proj" && chmod +x "$HOME/bin/proj"
+        rm -f "$_UPDATE_FILE"
+        local_ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null)
+        print -P "\n%F{green}%B✅ Обновлено до ${local_ver}. Перезапусти proj.%f%b\n"
+        exit 0
+    else
+        print -P "\n%F{red}✗ Ошибка. Проверь соединение или запусти: git -C ~/.studio-tools pull%f\n"
+    fi
 
 fi
 
