@@ -4,11 +4,10 @@
 
 ## Установка
 
+Одна команда — клонирует в `~/.studio-tools` и настраивает всё автоматически:
+
 ```zsh
-git clone https://github.com/cutcodeenv-tech/studio-tools.git
-cd studio-tools
-./setup.sh
-source ~/.zshrc
+git clone https://github.com/cutcodeenv-tech/studio-tools.git ~/.studio-tools && ~/.studio-tools/setup.sh && source ~/.zshrc
 ```
 
 `setup.sh` устанавливает `fzf` (если не установлен) и добавляет команду `proj` в терминал.

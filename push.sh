@@ -25,11 +25,9 @@ git add -A
 git commit -m "$COMMIT_MSG"
 git push
 
-# Обновляем локальную команду если proj изменился
-if [[ -f "$HOME/bin/proj" ]]; then
-    cp "${REPO_DIR}/bin/proj" "$HOME/bin/proj"
-    chmod +x "$HOME/bin/proj"
-    print -P "  %F{green}✓%f  ~/bin/proj обновлён"
-fi
+# Обновляем локальную команду
+cp "${REPO_DIR}/bin/proj" "$HOME/bin/proj"
+chmod +x "$HOME/bin/proj"
+print -P "  %F{green}✓%f  ~/bin/proj обновлён"
 
 print -P "\n%F{green}%B✅ Загружено на GitHub.%f%b\n"
