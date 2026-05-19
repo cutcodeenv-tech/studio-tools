@@ -24,9 +24,8 @@ echo "✓ ~/bin"
 # 4. Копируем команды
 SCRIPT_DIR="${0:A:h}"
 cp "${SCRIPT_DIR}/bin/proj" "$HOME/bin/proj"
-cp "${SCRIPT_DIR}/bin/sf"   "$HOME/bin/sf"
-chmod +x "$HOME/bin/proj" "$HOME/bin/sf"
-echo "✓ proj, sf → ~/bin/"
+chmod +x "$HOME/bin/proj"
+echo "✓ proj → ~/bin/"
 
 # 5. PATH в .zshrc
 if ! grep -q 'PATH.*HOME/bin\|HOME/bin.*PATH' "$HOME/.zshrc" 2>/dev/null; then
@@ -38,4 +37,4 @@ fi
 
 echo "\n✅ Готово! Перезапусти терминал или выполни:\n"
 echo "   source ~/.zshrc\n"
-echo "Команды: proj  /  sf\n"
+echo "Команда: proj\n"
