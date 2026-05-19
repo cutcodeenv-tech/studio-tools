@@ -1,0 +1,77 @@
+#!/bin/zsh
+
+# ── КОНФИГ ──────────────────────────────────────────────────────────────────
+SSD_PROJECTS_ROOT="/Volumes/01_Extreme SSD/[001] Projects"
+HDD_SOURCES_ROOT="/Volumes/HDD_1"
+PREMIERE_TEMPLATE="/Volumes/01_Extreme SSD/[003] Resurces/00_TEMPLATE1.prproj"
+# ────────────────────────────────────────────────────────────────────────────
+
+print -P "\n%B%F{cyan}┌─ Новый проект ─────────────────────────┐%f%b"
+
+# Имя проекта
+print -P "%B%F{cyan}│%f%b Название: \c"
+read PROJECT_NAME
+if [[ -z "$PROJECT_NAME" ]]; then
+    print -P "%F{red}Отменено.%f\n"
+    exit 0
+fi
+
+# Количество камер
+print -P "%B%F{cyan}│%f%b Камер (1-10) [2]: \c"
+read CAM_COUNT
+if ! [[ "$CAM_COUNT" =~ ^[0-9]+$ ]] || (( CAM_COUNT < 1 || CAM_COUNT > 10 )); then
+    CAM_COUNT=2
+fi
+
+print -P "%B%F{cyan}└────────────────────────────────────────┘%f%b"
+
+DATE=$(date +%Y-%m-%d)
+SAFE_NAME="${PROJECT_NAME// /_}"
+PROJECT_FOLDER_NAME="${DATE}_${SAFE_NAME}"
+SSD_ROOT="${SSD_PROJECTS_ROOT}/${PROJECT_FOLDER_NAME}"
+HDD_ROOT="${HDD_SOURCES_ROOT}/${PROJECT_FOLDER_NAME}"
+
+# Проверка дубликата
+if [[ -d "$SSD_ROOT" ]]; then
+    print -P "\n%F{red}✗ Папка уже существует: ${SSD_ROOT}%f\n"
+    exit 1
+fi
+
+print -P "\n%F{yellow}Создаю структуру...%f"
+
+# Структура SSD
+mkdir -p "${SSD_ROOT}/00_Admin"
+mkdir -p "${SSD_ROOT}/01_Project_Files"/{Premiere,DaVinci,AfterEffects,Photoshop,Illustrator,Audition}
+mkdir -p "${SSD_ROOT}/02_Sources"/{Video/{Screen_Cap,Stock_Archival},Audio/{Music,SFX,VoiceOver},Graphics/{Images,Vectors}}
+mkdir -p "${SSD_ROOT}/03_Proxies"
+mkdir -p "${SSD_ROOT}/04_Exports"/{01_Drafts,02_Handoff/{For_Color,For_Sound,For_CGI},03_Master,04_Socials}
+mkdir -p "${SSD_ROOT}/99_Archive"
+print -P "  %F{green}✓%f  Папки SSD"
+
+# Шаблон Premiere
+if [[ -f "$PREMIERE_TEMPLATE" ]]; then
+    cp "$PREMIERE_TEMPLATE" "${SSD_ROOT}/01_Project_Files/Premiere/${SAFE_NAME}.prproj"
+    print -P "  %F{green}✓%f  Шаблон Premiere"
+else
+    print -P "  %F{yellow}⚠%f  Шаблон Premiere не найден: ${PREMIERE_TEMPLATE}"
+fi
+
+# Проверка HDD
+HDD_OK=true
+if [[ ! -d "$HDD_SOURCES_ROOT" ]]; then
+    print -P "  %F{yellow}⚠%f  HDD не смонтирован, камеры пропущены"
+    HDD_OK=false
+fi
+
+# Камеры
+if [[ "$HDD_OK" == true ]]; then
+    ALPHABET=( {a..z} )
+    for (( i=1; i<=CAM_COUNT; i++ )); do
+        CAM="Cam_${ALPHABET[$i]}"
+        mkdir -p "${SSD_ROOT}/02_Sources/Video/${CAM}/Proxy"
+        mkdir -p "${HDD_ROOT}/02_Sources/Video/${CAM}"
+        print -P "  %F{green}✓%f  ${CAM}"
+    done
+fi
+
+print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f\n"

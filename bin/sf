@@ -1,0 +1,87 @@
+#!/bin/zsh
+
+# ── КОНФИГ ──────────────────────────────────────────────────────────────────
+SSD_PROJECTS_ROOT="/Volumes/01_Extreme SSD/[001] Projects"
+HDD_SOURCES_ROOT="/Volumes/HDD_1"
+# ────────────────────────────────────────────────────────────────────────────
+
+print -P "\n%B%F{cyan}Sync Footage%f%b\n"
+
+# Проверка HDD
+if [[ ! -d "$HDD_SOURCES_ROOT" ]]; then
+    print -P "%F{red}✗ HDD не смонтирован: ${HDD_SOURCES_ROOT}%f\n"
+    exit 1
+fi
+
+# Список проектов через fzf
+chosen=$(ls -1t "$SSD_PROJECTS_ROOT" 2>/dev/null | fzf \
+    --prompt="  Проект > " \
+    --height=40% \
+    --border=rounded \
+    --border-label=" Выберите проект " \
+    --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
+    --pointer="▶" \
+    --no-multi)
+
+if [[ -z "$chosen" ]]; then
+    print -P "%F{red}Отменено.%f\n"
+    exit 0
+fi
+
+SSD_PROJECT="${SSD_PROJECTS_ROOT}/${chosen}"
+HDD_PROJECT="${HDD_SOURCES_ROOT}/${chosen}"
+
+if [[ ! -d "$HDD_PROJECT" ]]; then
+    print -P "%F{red}✗ Проект не найден на HDD: ${HDD_PROJECT}%f\n"
+    exit 1
+fi
+
+print -P "%B▶ Проект:%b ${chosen}\n"
+
+synced=0
+skipped=0
+
+for hdd_cam in "${HDD_PROJECT}/02_Sources/Video"/Cam_*/; do
+    [[ -d "$hdd_cam" ]] || continue
+    cam_name=$(basename "$hdd_cam")
+    ssd_cam="${SSD_PROJECT}/02_Sources/Video/${cam_name}"
+
+    mkdir -p "${ssd_cam}/Proxy"
+    print -P "%B%F{cyan}📁 ${cam_name}%f%b"
+
+    # Симлинки для исходников
+    for hdd_file in "${hdd_cam}"*; do
+        [[ -f "$hdd_file" ]] || continue
+        filename=$(basename "$hdd_file")
+        ssd_link="${ssd_cam}/${filename}"
+
+        if [[ ! -e "$ssd_link" && ! -L "$ssd_link" ]]; then
+            ln -s "$hdd_file" "$ssd_link"
+            (( synced++ ))
+            print -P "  %F{green}→%f symlink  ${filename}"
+        else
+            (( skipped++ ))
+        fi
+    done
+
+    # Копируем прокси
+    if [[ -d "${hdd_cam}Proxy" ]]; then
+        for proxy_file in "${hdd_cam}Proxy/"*; do
+            [[ -f "$proxy_file" ]] || continue
+            filename=$(basename "$proxy_file")
+            ssd_proxy="${ssd_cam}/Proxy/${filename}"
+
+            if [[ ! -e "$ssd_proxy" ]]; then
+                print -P "  %F{yellow}⬇%f copy     Proxy/${filename}"
+                cp "$proxy_file" "$ssd_proxy"
+                (( synced++ ))
+                print -P "  %F{green}✓%f done     Proxy/${filename}"
+            else
+                (( skipped++ ))
+            fi
+        done
+    fi
+done
+
+print -P "\n%F{green}%B✅ Готово:%b ${synced} новых, ${skipped} пропущено.%f\n"
+afplay /System/Library/Sounds/Glass.aiff 2>/dev/null || true
