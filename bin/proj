@@ -78,7 +78,13 @@ if [[ "$action" == "Новый проект" ]]; then
         done
     fi
 
-    print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f\n"
+    print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f"
+    print -P "%F{cyan}│%f%b Открыть в Finder? [Y/n]: \c"
+    read OPEN_FINDER
+    if [[ "$OPEN_FINDER" != "n" && "$OPEN_FINDER" != "N" ]]; then
+        open "$SSD_ROOT"
+    fi
+    print ""
 
 # ── SYNC FOOTAGE ─────────────────────────────────────────────────────────────
 elif [[ "$action" == "Синхронизировать footage" ]]; then
@@ -146,7 +152,8 @@ elif [[ "$action" == "Синхронизировать footage" ]]; then
                 ssd_proxy="${ssd_cam}/Proxy/${filename}"
 
                 if [[ ! -e "$ssd_proxy" ]]; then
-                    print -P "  %F{yellow}⬇%f copy     Proxy/${filename}"
+                    filesize=$(du -sh "$proxy_file" 2>/dev/null | cut -f1)
+                    print -P "  %F{yellow}⬇%f copy     Proxy/${filename} %F{240}(${filesize})%f"
                     cp "$proxy_file" "$ssd_proxy"
                     (( synced++ ))
                     print -P "  %F{green}✓%f done     Proxy/${filename}"

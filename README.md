@@ -1,0 +1,72 @@
+# Studio Tools
+
+Терминальные инструменты для управления видеопроектами: создание структуры папок, синхронизация footage с HDD.
+
+## Установка
+
+```zsh
+git clone https://github.com/cutcodeenv-tech/studio-tools.git
+cd studio-tools
+./setup.sh
+source ~/.zshrc
+```
+
+`setup.sh` устанавливает `fzf` (если не установлен) и добавляет команду `proj` в терминал.
+
+## Использование
+
+```zsh
+proj
+```
+
+При запуске открывается меню:
+
+```
+╭─ proj ────────────────────────╮
+│ ▶ Новый проект                │
+│   Синхронизировать footage    │
+╰───────────────────────────────╯
+```
+
+### Новый проект
+
+Создаёт структуру папок на SSD и HDD:
+
+```
+SSD/[001] Projects/2026-05-19_Project_Name/
+├── 00_Admin/
+├── 01_Project_Files/         (Premiere, DaVinci, AE, PS, AI, Audition)
+├── 02_Sources/
+│   └── Video/
+│       └── Cam_a/
+│           └── Proxy/        ← реальная папка на SSD
+├── 03_Proxies/
+├── 04_Exports/
+└── 99_Archive/
+
+HDD/Project_Name/
+└── 02_Sources/Video/Cam_a/   ← оригиналы footage
+```
+
+### Синхронизировать footage
+
+После того как footage скопирован на HDD — создаёт симлинки в SSD-папке проекта.
+Файлы в `Proxy/` копируются на SSD как оригиналы.
+
+## Конфиг
+
+Пути настраиваются в начале `bin/proj`:
+
+```zsh
+SSD_PROJECTS_ROOT="/Volumes/01_Extreme SSD/[001] Projects"
+HDD_SOURCES_ROOT="/Volumes/HDD_1"
+PREMIERE_TEMPLATE="/Volumes/01_Extreme SSD/[003] Resurces/00_TEMPLATE1.prproj"
+```
+
+## Обновление
+
+```zsh
+./push.sh
+```
+
+Коммитит изменения, пушит на GitHub и обновляет локальную команду `proj`.
