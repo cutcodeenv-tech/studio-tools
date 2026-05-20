@@ -34,7 +34,9 @@ source "$CONFIG_FILE"
 _check_deps() {
     local _cache="${STUDIO_DIR}/.deps_ok"
     if [[ -f "$_cache" ]] && \
-       (( $(date +%s) - $(_stat_mtime "$_cache") < 86400 )); then
+       (( $(date +%s) - $(_stat_mtime "$_cache") < 86400 )) && \
+       command -v yazi &>/dev/null && \
+       command -v fzf  &>/dev/null; then
         return 0
     fi
 
