@@ -1,47 +1,121 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 
-echo "\n▶ Studio Tools — Setup\n"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# 1. Homebrew
-if ! command -v brew &>/dev/null; then
-    echo "✗ Homebrew не найден. Установи его: https://brew.sh"
-    exit 1
-fi
-echo "✓ Homebrew"
+# ── Detect OS ─────────────────────────────────────────────────────────────────
+case "$OSTYPE" in
+    darwin*)       _OS="macos" ;;
+    msys*|cygwin*) _OS="windows" ;;
+    linux*)        _OS="linux" ;;
+    *)             _OS="unknown" ;;
+esac
 
-# 2. fzf
+printf "\n▶ Studio Tools — Setup ($_OS)\n\n"
+
+# ── Package manager ───────────────────────────────────────────────────────────
+case "$_OS" in
+    macos)
+        if ! command -v brew &>/dev/null; then
+            printf "✗ Homebrew не найден: https://brew.sh\n"; exit 1
+        fi
+        printf "✓ Homebrew\n"
+        ;;
+    windows)
+        if ! command -v scoop &>/dev/null; then
+            printf "→ Устанавливаю Scoop...\n"
+            powershell -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force; irm get.scoop.sh | iex"
+            export PATH="$HOME/scoop/shims:$PATH"
+        fi
+        printf "✓ Scoop\n"
+
+        if ! command -v zsh &>/dev/null; then
+            printf "→ Устанавливаю zsh...\n"
+            scoop install zsh
+        fi
+        printf "✓ zsh\n"
+        ;;
+    linux)
+        if ! command -v brew &>/dev/null && ! command -v apt-get &>/dev/null && ! command -v dnf &>/dev/null; then
+            printf "⚠  Пакетный менеджер не найден. Установи зависимости вручную.\n"
+        fi
+        ;;
+esac
+
+# ── fzf ───────────────────────────────────────────────────────────────────────
 if ! command -v fzf &>/dev/null; then
-    echo "⬇ Устанавливаю fzf..."
-    brew install fzf
+    printf "→ Устанавливаю fzf...\n"
+    case "$_OS" in
+        macos)   brew install fzf ;;
+        windows) scoop install fzf ;;
+        linux)   sudo apt-get install -y fzf 2>/dev/null || sudo dnf install -y fzf 2>/dev/null || printf "  Установи fzf вручную\n" ;;
+    esac
 else
-    echo "✓ fzf"
+    printf "✓ fzf\n"
 fi
 
-# 3. ~/bin и ~/.studio-tools
-mkdir -p "$HOME/bin"
-mkdir -p "$HOME/.studio-tools"
-echo "✓ ~/bin"
-echo "✓ ~/.studio-tools"
+# ── superfile ─────────────────────────────────────────────────────────────────
+if ! command -v spf &>/dev/null; then
+    printf "→ Устанавливаю superfile...\n"
+    case "$_OS" in
+        macos)   brew install superfile ;;
+        windows) scoop bucket add extras 2>/dev/null; scoop install superfile ;;
+        linux)   brew install superfile 2>/dev/null || printf "  Установи superfile вручную: https://github.com/yorukot/superfile\n" ;;
+    esac
+else
+    printf "✓ superfile\n"
+fi
 
-# 4. Копируем команды
-SCRIPT_DIR="${0:A:h}"
+# ── Nerd Font ─────────────────────────────────────────────────────────────────
+_font_ok=false
+case "$_OS" in
+    macos)
+        ls ~/Library/Fonts 2>/dev/null | grep -qi "JetBrainsMono.*Nerd" && _font_ok=true
+        ls /Library/Fonts  2>/dev/null | grep -qi "JetBrainsMono.*Nerd" && _font_ok=true
+        ;;
+    windows)
+        ls "$USERPROFILE/AppData/Local/Microsoft/Windows/Fonts" 2>/dev/null | grep -qi "JetBrainsMono" && _font_ok=true
+        ;;
+    linux)
+        fc-list 2>/dev/null | grep -qi "JetBrains.*Nerd" && _font_ok=true
+        ;;
+esac
+
+if [[ "$_font_ok" == false ]]; then
+    printf "→ Устанавливаю JetBrains Mono Nerd Font...\n"
+    case "$_OS" in
+        macos)   brew install --cask font-jetbrains-mono-nerd-font ;;
+        windows) scoop bucket add nerd-fonts 2>/dev/null; scoop install JetBrainsMono-NF ;;
+        linux)   brew install --cask font-jetbrains-mono-nerd-font 2>/dev/null || printf "  Установи шрифт вручную\n" ;;
+    esac
+    printf "  ⚠  Выбери 'JetBrainsMono Nerd Font' в настройках терминала\n"
+else
+    printf "✓ JetBrains Mono Nerd Font\n"
+fi
+
+# ── Copy proj ─────────────────────────────────────────────────────────────────
+mkdir -p "$HOME/bin" "$HOME/.studio-tools"
 cp "${SCRIPT_DIR}/bin/proj" "$HOME/bin/proj"
 chmod +x "$HOME/bin/proj"
-echo "✓ proj → ~/bin/"
+printf "✓ proj → ~/bin/\n"
 
-cp "${SCRIPT_DIR}/bin/sf" "$HOME/bin/sf"
-chmod +x "$HOME/bin/sf"
-echo "✓ sf → ~/bin/"
+# ── PATH ──────────────────────────────────────────────────────────────────────
+_add_path() {
+    local rc="$1"
+    [[ -f "$rc" ]] || return
+    grep -q 'HOME/bin' "$rc" && return
+    printf '\nexport PATH="$HOME/bin:$PATH"\n' >> "$rc"
+    printf "✓ PATH → %s\n" "$rc"
+}
 
-# 5. PATH в .zshrc
-if ! grep -q 'PATH.*HOME/bin\|HOME/bin.*PATH' "$HOME/.zshrc" 2>/dev/null; then
-    echo '\nexport PATH="$HOME/bin:$PATH"' >> "$HOME/.zshrc"
-    echo "✓ PATH добавлен в ~/.zshrc"
-else
-    echo "✓ PATH уже в ~/.zshrc"
-fi
+case "$_OS" in
+    macos)
+        _add_path "$HOME/.zshrc"
+        ;;
+    windows|linux)
+        _add_path "$HOME/.bashrc"
+        _add_path "$HOME/.bash_profile"
+        ;;
+esac
 
-echo "\n✅ Готово! Перезапусти терминал или выполни:\n"
-echo "   source ~/.zshrc\n"
-echo "Команды: proj   sf\n"
-echo "Настройки: proj → пункт 5 Настройки\n"
+printf "\n✅ Готово! Перезапусти терминал или выполни: source ~/.zshrc\n\n"
+printf "Команда: proj\n\n"
