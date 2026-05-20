@@ -59,16 +59,16 @@ else
     printf "✓ fzf\n"
 fi
 
-# ── superfile ─────────────────────────────────────────────────────────────────
-if ! command -v spf &>/dev/null; then
-    printf "→ Устанавливаю superfile...\n"
+# ── yazi ─────────────────────────────────────────────────────────────────────
+if ! command -v yazi &>/dev/null; then
+    printf "→ Устанавливаю yazi...\n"
     case "$_OS" in
-        macos)   brew install superfile ;;
-        windows) scoop bucket add extras 2>/dev/null; scoop install superfile ;;
-        linux)   brew install superfile 2>/dev/null || printf "  Установи superfile вручную: https://github.com/yorukot/superfile\n" ;;
+        macos)   brew install yazi ;;
+        windows) scoop install yazi ;;
+        linux)   brew install yazi 2>/dev/null || printf "  Установи yazi вручную: https://github.com/sxyazi/yazi\n" ;;
     esac
 else
-    printf "✓ superfile\n"
+    printf "✓ yazi\n"
 fi
 
 # ── Nerd Font ─────────────────────────────────────────────────────────────────
@@ -97,18 +97,17 @@ else
     printf "✓ JetBrains Mono Nerd Font\n"
 fi
 
-# ── superfile config (hotkeys + config) ──────────────────────────────────────
+# ── yazi config (keymap + settings) ──────────────────────────────────────────
 case "$_OS" in
-    macos)   _SPF_CFG="$HOME/Library/Application Support/superfile" ;;
-    windows) _SPF_CFG="$APPDATA/superfile" ;;
-    linux)   _SPF_CFG="$HOME/.config/superfile" ;;
+    macos|linux) _YAZI_CFG="$HOME/.config/yazi" ;;
+    windows)     _YAZI_CFG="${APPDATA}/yazi/config" ;;
 esac
 
-if [[ -d "$STUDIO_DIR/spf/superfile" ]]; then
-    mkdir -p "$_SPF_CFG"
-    cp "$STUDIO_DIR/spf/superfile/hotkeys.toml" "$_SPF_CFG/hotkeys.toml"
-    cp "$STUDIO_DIR/spf/superfile/config.toml"  "$_SPF_CFG/config.toml"
-    printf "✓ superfile config (hotkeys + theme)\n"
+if [[ -d "$STUDIO_DIR/yazi" ]]; then
+    mkdir -p "$_YAZI_CFG"
+    cp "$STUDIO_DIR/yazi/keymap.toml" "$_YAZI_CFG/keymap.toml"
+    cp "$STUDIO_DIR/yazi/yazi.toml"   "$_YAZI_CFG/yazi.toml"
+    printf "✓ yazi config (keymap + settings)\n"
 fi
 
 # ── ~/bin/proj ────────────────────────────────────────────────────────────────

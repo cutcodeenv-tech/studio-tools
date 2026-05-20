@@ -65,11 +65,11 @@ _check_deps() {
         esac
         _any=true
     fi
-    if ! command -v spf &>/dev/null; then
-        print -P "%F{cyan}  → Устанавливаю superfile...%f"
+    if ! command -v yazi &>/dev/null; then
+        print -P "%F{cyan}  → Устанавливаю yazi...%f"
         case "$_OS" in
-            macos)   brew install superfile ;;
-            windows) scoop bucket add extras 2>/dev/null; scoop install superfile ;;
+            macos)   brew install yazi ;;
+            windows) scoop install yazi ;;
         esac
         _any=true
     fi
@@ -202,9 +202,9 @@ cmd_new() {
     fi
 
     print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f"
-    print -P "%F{cyan}│%f Открыть в superfile? [Y/n]: \c"; read OPEN_SPF
-    if [[ "$OPEN_SPF" != "n" && "$OPEN_SPF" != "N" ]]; then
-        spf "$SSD_ROOT"
+    print -P "%F{cyan}│%f Открыть в yazi? [Y/n]: \c"; read OPEN_YAZI
+    if [[ "$OPEN_YAZI" != "n" && "$OPEN_YAZI" != "N" ]]; then
+        yazi "$SSD_ROOT"
     fi
     print ""
 }
@@ -342,7 +342,7 @@ cmd_settings() {
         [[ -z "$selected" ]] && continue
 
         if [[ "$selected" == *"Шаблон папок"* ]]; then
-            ( cd "$TEMPLATE_DIR" && spf ); continue
+            yazi "$TEMPLATE_DIR"; continue
         fi
 
         local setting_key setting_val
@@ -381,17 +381,14 @@ cmd_update() {
         cp "${STUDIO_DIR}/bin/proj" "$HOME/bin/proj" && chmod +x "$HOME/bin/proj"
         print -P "  %F{green}✓%f  bin/proj"
 
-        local _spf_src="${STUDIO_DIR}/spf/superfile"
-        if [[ -d "$_spf_src" ]]; then
-            case "$_OS" in
-                macos)   local _spf_cfg="$HOME/Library/Application Support/superfile" ;;
-                windows) local _spf_cfg="$APPDATA/superfile" ;;
-                linux)   local _spf_cfg="$HOME/.config/superfile" ;;
-            esac
-            mkdir -p "$_spf_cfg"
-            cp "${_spf_src}/hotkeys.toml" "$_spf_cfg/hotkeys.toml"
-            cp "${_spf_src}/config.toml"  "$_spf_cfg/config.toml"
-            print -P "  %F{green}✓%f  superfile hotkeys + config"
+        local _yazi_src="${STUDIO_DIR}/yazi"
+        if [[ -d "$_yazi_src" ]]; then
+            local _yazi_cfg="$HOME/.config/yazi"
+            [[ "$_OS" == "windows" ]] && _yazi_cfg="${APPDATA}/yazi/config"
+            mkdir -p "$_yazi_cfg"
+            cp "${_yazi_src}/keymap.toml" "$_yazi_cfg/keymap.toml"
+            cp "${_yazi_src}/yazi.toml"   "$_yazi_cfg/yazi.toml"
+            print -P "  %F{green}✓%f  yazi keymap + config"
         fi
 
         rm -f "$_UPDATE_FILE"
@@ -407,15 +404,15 @@ cmd_help() {
     print -P "
 %B%F{cyan}proj ${PROJ_VERSION}%f%b — Studio Tools
 
-  %Bproj%b                Открыть проекты в superfile
+  %Bproj%b                Открыть проекты в yazi
   %Bproj new%b            Создать новый проект
   %Bproj status%b         Статус проекта (HDD / симлинки / прокси)
   %Bproj sync%b           Синхронизировать footage с HDD
   %Bproj settings%b       Настройки (пути, шаблон папок)
-  %Bproj template%b       Редактировать шаблон папок в superfile
+  %Bproj template%b       Редактировать шаблон папок в yazi
   %Bproj update%b         Обновить studio-tools
 
-%F{240}  Из superfile: нажми : и введи нужную команду (proj new, proj sync...)%f
+%F{240}  Из yazi: gn — новый проект   gs — синхронизация   gp — статус   g, — настройки%f
 "
 }
 
@@ -440,32 +437,13 @@ case "$1" in
     status)   cmd_status ;;
     sync)     cmd_sync ;;
     settings) cmd_settings ;;
-    template) ( cd "$TEMPLATE_DIR" && spf ) ;;
+    template) yazi "$TEMPLATE_DIR" ;;
     update)   cmd_update ;;
     help|-h|--help) cmd_help ;;
     "")
         [[ -f "$_UPDATE_FILE" ]] && \
             print -P "%F{yellow}  ⬆  Доступно обновление → proj update%f"
-        while true; do
-            ( cd "$SSD_PROJECTS_ROOT" && spf )
-            local _next
-            _next=$(printf \
-                "  ↩  Вернуться в файловый менеджер\n  ＋  Новый проект\n  ⬇  Синхронизировать footage\n  ◎  Статус проекта\n  ⚙  Настройки\n  ✕  Выйти" \
-                | fzf \
-                --prompt="  > " --height=11 --layout=reverse --border=rounded \
-                --border-label=" Studio Tools " \
-                --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-                --pointer="▶" --no-multi)
-            [[ -z "$_next" ]] && break
-            case "$_next" in
-                *"Вернуться"*)  ;;
-                *"Новый"*)      cmd_new ;;
-                *"Синхрон"*)    cmd_sync ;;
-                *"Статус"*)     cmd_status ;;
-                *"Настройки"*)  cmd_settings ;;
-                *"Выйти"*)      break ;;
-            esac
-        done
+        yazi "$SSD_PROJECTS_ROOT"
         ;;
     *)
         print -P "%F{red}Неизвестная команда: $1%f"
