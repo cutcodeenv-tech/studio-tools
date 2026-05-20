@@ -104,10 +104,10 @@ case "$_OS" in
     linux)   _SPF_CFG="$HOME/.config/superfile" ;;
 esac
 
-if [[ -d "$STUDIO_DIR/config/superfile" ]]; then
+if [[ -d "$STUDIO_DIR/spf/superfile" ]]; then
     mkdir -p "$_SPF_CFG"
-    cp "$STUDIO_DIR/config/superfile/hotkeys.toml" "$_SPF_CFG/hotkeys.toml"
-    cp "$STUDIO_DIR/config/superfile/config.toml"  "$_SPF_CFG/config.toml"
+    cp "$STUDIO_DIR/spf/superfile/hotkeys.toml" "$_SPF_CFG/hotkeys.toml"
+    cp "$STUDIO_DIR/spf/superfile/config.toml"  "$_SPF_CFG/config.toml"
     printf "✓ superfile config (hotkeys + theme)\n"
 fi
 

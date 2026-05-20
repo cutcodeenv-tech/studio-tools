@@ -1,2 +1,10 @@
-Команды
+# Пользовательские данные (создаются при использовании)
+config
+folders.txt
+.deps_ok
+.update_cache
+.update_available
+
+# macOS
 .DS_Store
+Команды
