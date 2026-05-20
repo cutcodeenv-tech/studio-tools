@@ -83,6 +83,14 @@ _check_deps() {
         esac
         _any=true
     fi
+    if ! command -v mpv &>/dev/null; then
+        print -P "%F{cyan}  → Устанавливаю mpv (аудио/видео)...%f"
+        case "$_OS" in
+            macos)   brew install mpv ;;
+            windows) scoop install mpv ;;
+        esac
+        _any=true
+    fi
 
     local _font_ok=false
     case "$_OS" in

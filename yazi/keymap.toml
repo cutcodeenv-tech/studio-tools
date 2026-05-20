@@ -97,6 +97,17 @@ on = "\\"
 run = "plugin proj"
 desc = "Proj: меню команд"
 
+# Воспроизведение файла
+[[mgr.prepend_keymap]]
+on = "П"  # P (русская)
+run = "shell -- mpv %h &"
+desc = "Воспроизвести файл"
+
+[[mgr.prepend_keymap]]
+on = "P"
+run = "shell -- mpv %h &"
+desc = "Воспроизвести файл"
+
 # Прямые вызовы через g-prefix
 [[mgr.prepend_keymap]]
 on = ["g", "n"]

@@ -71,6 +71,30 @@ else
     printf "✓ yazi\n"
 fi
 
+# ── chafa (предпросмотр картинок в yazi) ─────────────────────────────────────
+if ! command -v chafa &>/dev/null; then
+    printf "→ Устанавливаю chafa...\n"
+    case "$_OS" in
+        macos)   brew install chafa ;;
+        windows) scoop install chafa ;;
+        linux)   sudo apt-get install -y chafa 2>/dev/null || sudo dnf install -y chafa 2>/dev/null || printf "  Установи chafa вручную\n" ;;
+    esac
+else
+    printf "✓ chafa\n"
+fi
+
+# ── mpv (воспроизведение аудио/видео в терминале) ────────────────────────────
+if ! command -v mpv &>/dev/null; then
+    printf "→ Устанавливаю mpv...\n"
+    case "$_OS" in
+        macos)   brew install mpv ;;
+        windows) scoop install mpv ;;
+        linux)   sudo apt-get install -y mpv 2>/dev/null || sudo dnf install -y mpv 2>/dev/null || printf "  Установи mpv вручную\n" ;;
+    esac
+else
+    printf "✓ mpv\n"
+fi
+
 # ── Nerd Font ─────────────────────────────────────────────────────────────────
 _font_ok=false
 case "$_OS" in
