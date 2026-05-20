@@ -100,12 +100,12 @@ desc = "Proj: меню команд"
 # Воспроизведение файла
 [[mgr.prepend_keymap]]
 on = "П"  # P (русская)
-run = "shell -- mpv %h &"
+run = "shell --block -- mpv --no-video %h"
 desc = "Воспроизвести файл"
 
 [[mgr.prepend_keymap]]
 on = "P"
-run = "shell -- mpv %h &"
+run = "shell --block -- mpv --no-video %h"
 desc = "Воспроизвести файл"
 
 # Прямые вызовы через g-prefix
