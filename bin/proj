@@ -376,6 +376,26 @@ cmd_settings() {
     done
 }
 
+# ── proj menu ────────────────────────────────────────────────────────────────
+cmd_menu() {
+    local action
+    action=$(printf \
+        "  Новый проект\n  Синхронизировать footage\n  Статус проекта\n  Настройки\n  Шаблон папок" \
+        | fzf \
+        --prompt="  proj > " --height=10 --layout=reverse --border=rounded \
+        --border-label=" Studio Tools " \
+        --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
+        --pointer="▶" --no-multi)
+    [[ -z "$action" ]] && return
+    case "$action" in
+        *"Новый"*)     cmd_new ;;
+        *"Синхрон"*)   cmd_sync ;;
+        *"Статус"*)    cmd_status ;;
+        *"Настройки"*) cmd_settings ;;
+        *"Шаблон"*)    yazi "$TEMPLATE_DIR" ;;
+    esac
+}
+
 # ── proj update ───────────────────────────────────────────────────────────────
 cmd_update() {
     print -P "\n%B%F{cyan}Обновление Studio Tools...%f%b\n"
@@ -440,6 +460,7 @@ case "$1" in
     sync)     cmd_sync ;;
     settings) cmd_settings ;;
     template) yazi "$TEMPLATE_DIR" ;;
+    menu)     cmd_menu ;;
     update)   cmd_update ;;
     help|-h|--help) cmd_help ;;
     "")

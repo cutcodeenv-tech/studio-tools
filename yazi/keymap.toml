@@ -95,8 +95,14 @@ on = "Ф"  # A
 run = "select_all --state=true"
 desc = "Выделить всё"
 
-# ── Proj команды (gn / gs / gp / g,) ─────────────────────────────────────────
+# ── Proj меню (\ → выбор команды) ────────────────────────────────────────────
 
+[[manager.prepend_keymap]]
+on = "\\"
+run = "shell --block 'proj menu'"
+desc = "Proj: меню команд"
+
+# Прямые вызовы через g-prefix (работают даже если не видны в попапе)
 [[manager.prepend_keymap]]
 on = ["g", "n"]
 run = "shell --block 'proj new'"
