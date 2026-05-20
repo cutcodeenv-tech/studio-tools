@@ -1,37 +1,40 @@
 #!/bin/zsh
 
 # ── КОНФИГ ──────────────────────────────────────────────────────────────────
+STUDIO_DIR="$HOME/.studio-tools"
+CONFIG_FILE="${STUDIO_DIR}/config"
+TEMPLATE_DIR="${STUDIO_DIR}/template"
+_UPDATE_FILE="${STUDIO_DIR}/.update_available"
+_UPDATE_CACHE="${STUDIO_DIR}/.update_cache"
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    mkdir -p "$STUDIO_DIR"
+    cat > "$CONFIG_FILE" <<'EOF'
 SSD_PROJECTS_ROOT="/Volumes/01_Extreme SSD/[001] Projects"
 HDD_SOURCES_ROOT="/Volumes/HDD_1"
 PREMIERE_TEMPLATE="/Volumes/01_Extreme SSD/[003] Resurces/00_TEMPLATE1.prproj"
-STUDIO_DIR="$HOME/.studio-tools"
-_UPDATE_FILE="${STUDIO_DIR}/.update_available"
-_UPDATE_CACHE="${STUDIO_DIR}/.update_cache"
-# ────────────────────────────────────────────────────────────────────────────
-
-# ── CLI: proj update ─────────────────────────────────────────────────────────
-if [[ "$1" == "update" ]]; then
-    print -P "\n%B%F{cyan}Обновление Studio Tools...%f%b\n"
-    if git -C "$STUDIO_DIR" pull; then
-        cp "${STUDIO_DIR}/bin/proj" "$HOME/bin/proj" && chmod +x "$HOME/bin/proj"
-        rm -f "$_UPDATE_FILE"
-        local_ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null)
-        print -P "\n%F{green}%B✅ Обновлено до ${local_ver}. Перезапусти proj.%f%b\n"
-    else
-        print -P "\n%F{red}✗ Ошибка обновления%f\n"
-    fi
-    exit 0
+EOF
 fi
 
-# ── ПРОГРЕСС-БАР КОПИРОВАНИЯ ─────────────────────────────────────────────────
+source "$CONFIG_FILE"
+
+[[ ! -d "$TEMPLATE_DIR" ]] && mkdir -p "$TEMPLATE_DIR"
+
+if ! command -v spf &>/dev/null; then
+    print -P "%F{red}✗ superfile не установлен. Запусти: brew install superfile%f\n"
+    exit 1
+fi
+# ────────────────────────────────────────────────────────────────────────────
+
+PROJ_VERSION=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
+
+# ── ПРОГРЕСС-БАР ─────────────────────────────────────────────────────────────
 copy_with_progress() {
     local src="$1" dst="$2" label="$3"
     local total=$(stat -f%z "$src" 2>/dev/null || echo 1)
     local bar_width=30
-
     cp "$src" "$dst" &
     local cp_pid=$!
-
     while kill -0 $cp_pid 2>/dev/null; do
         local current=$(stat -f%z "$dst" 2>/dev/null || echo 0)
         local pct=$(( current * 100 / total ))
@@ -43,294 +46,64 @@ copy_with_progress() {
         printf "\r  \033[33m⬇\033[0m  \033[90m[%s]\033[0m %3d%%  %s" "$bar" "$pct" "$label"
         sleep 0.15
     done
-
-    wait $cp_pid
-    local _rc=$?
+    wait $cp_pid; local _rc=$?
     local full_bar=$(printf '█%.0s' {1..$bar_width})
-    if (( _rc == 0 )); then
-        printf "\r  \033[32m✓\033[0m  \033[90m[%s]\033[0m 100%%  %s\n" "$full_bar" "$label"
-    else
-        printf "\r  \033[31m✗\033[0m  копирование не удалось: %s\n" "$label"
-    fi
+    (( _rc == 0 )) \
+        && printf "\r  \033[32m✓\033[0m  \033[90m[%s]\033[0m 100%%  %s\n" "$full_bar" "$label" \
+        || printf "\r  \033[31m✗\033[0m  копирование не удалось: %s\n" "$label"
     return $_rc
 }
 
-# ── ФАЙЛОВЫЙ МЕНЕДЖЕР ────────────────────────────────────────────────────────
-proj_file_manager() {
-    local current_dir="$SSD_PROJECTS_ROOT"
-    local _act_f _mod_f
-    _act_f=$(mktemp); _mod_f=$(mktemp)
-
-    # Эти биндинги не меняются между итерациями — задаём один раз
-    local _del_t _bsp_t
-    _del_t="transform:[[ \$(cat ${_mod_f}) == 1 ]] && echo 'delete-char' || echo 'execute-silent(echo d > ${_act_f})+accept'"
-    _bsp_t="transform:[[ \$(cat ${_mod_f}) == 1 ]] && echo 'backward-delete-char' || echo 'execute-silent(echo d > ${_act_f})+accept'"
-
-    while true; do
-        # Список содержимого папки
-        local items=()
-        [[ "$current_dir" != "$SSD_PROJECTS_ROOT" ]] && items+=("↑  ..")
-        for item in "${current_dir}"/*(N); do
-            local base=$(basename "$item")
-            [[ -d "$item" ]] && items+=("▶  ${base}") || items+=("   ${base}")
-        done
-
-        # Путь и метка для отображения
-        local rel="${current_dir#${SSD_PROJECTS_ROOT}}"
-        [[ -z "$rel" ]] && rel="/"
-        local dir_name=$(basename "$current_dir")
-        [[ "$current_dir" == "$SSD_PROJECTS_ROOT" ]] && dir_name="Проекты"
-
-        # Сброс флагов для каждой сессии fzf
-        : > "$_act_f"; echo 0 > "$_mod_f"
-
-        # Биндинги поиска зависят от текущего пути — пересчитываем
-        local _son _soff _ctrlf
-        _son="enable-search+change-prompt(  ${rel} / )+change-header(  ── поиск ──   Del/⌫: стереть   Ctrl+F: выйти из поиска)"
-        _soff="disable-search+clear-query+change-prompt(  ${rel} > )+change-header(  Space: выбрать   Enter/→: войти   Ctrl+R: переим.   ←: вверх   Ctrl+F: поиск)"
-        _ctrlf="transform:[[ \$(cat ${_mod_f}) == 0 ]] && { echo 1 > ${_mod_f}; echo '${_son}'; } || { echo 0 > ${_mod_f}; echo '${_soff}'; }"
-
-        local result
-        result=$(printf '%s\n' "${items[@]}" | fzf \
-            --prompt="  ${rel} > " \
-            --height=50% \
-            --layout=reverse \
-            --border=rounded \
-            --border-label=" ${dir_name} " \
-            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-            --pointer="▶" \
-            --multi \
-            --disabled \
-            --bind="space:toggle" \
-            --bind="right:accept" \
-            --bind="del:${_del_t}" \
-            --bind="bspace:${_bsp_t}" \
-            --bind="ctrl-f:${_ctrlf}" \
-            --expect="left,ctrl-r" \
-            --header="  Space: выбрать   Enter/→: войти   Ctrl+R: переим.   ←: вверх   Ctrl+F: поиск")
-
-        [[ -z "$result" ]] && break
-
-        local lines=("${(@f)result}")
-        local key="${lines[1]}"
-        local selections=("${lines[2,-1]}")
-        local is_delete=false
-        [[ -s "$_act_f" ]] && is_delete=true
-
-        # ── Стрелка влево / ← — подняться выше или выйти в меню ────────────
-        if [[ "$key" == "left" ]]; then
-            if [[ "$current_dir" != "$SSD_PROJECTS_ROOT" ]]; then
-                current_dir="${current_dir:h}"
-            else
-                break
-            fi
-
-        # ── Del / ⌫ — удаление ───────────────────────────────────────────────
-        elif $is_delete; then
-            local del_items=()
-            for s in "${selections[@]}"; do
-                local n="${s[4,-1]}"
-                [[ "$n" == ".." ]] && continue
-                del_items+=("${current_dir}/${n}")
-            done
-            [[ ${#del_items[@]} -eq 0 ]] && continue
-
-            print -P "\n%B%F{red}Переместить в корзину:%f%b"
-            for p in "${del_items[@]}"; do
-                print -P "  %F{red}✗%f  $(basename "$p")"
-            done
-            print -P "\n%F{yellow}Подтвердить? [y/N]: \c"
-            read CONFIRM
-            if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
-                for p in "${del_items[@]}"; do
-                    if osascript -e "tell application \"Finder\" to delete POSIX file \"${p}\"" 2>/dev/null; then
-                        print -P "  %F{green}✓%f  $(basename "$p") → Корзина"
-                    else
-                        print -P "  %F{red}✗%f  Не удалось: $(basename "$p")"
-                    fi
-                done
-            else
-                print -P "%F{red}Отменено.%f"
-            fi
-            print ""
-
-        # ── Ctrl+R — переименование ───────────────────────────────────────────
-        elif [[ "$key" == "ctrl-r" ]]; then
-            local ren_items=()
-            for s in "${selections[@]}"; do
-                local n="${s[4,-1]}"
-                [[ "$n" == ".." ]] && continue
-                ren_items+=("$n")
-            done
-            [[ ${#ren_items[@]} -eq 0 ]] && continue
-
-            if [[ ${#ren_items[@]} -eq 1 ]]; then
-                local old_name="${ren_items[1]}"
-                print -P "\n%B%F{cyan}Переименовать:%f%b ${old_name}"
-                print -P "%B%F{cyan}│%f%b Новое имя: \c"
-                read new_name
-                if [[ -n "$new_name" && "$new_name" != "$old_name" ]]; then
-                    if mv "${current_dir}/${old_name}" "${current_dir}/${new_name}" 2>/dev/null; then
-                        print -P "  %F{green}✓%f  ${old_name} → ${new_name}"
-                    else
-                        print -P "  %F{red}✗%f  Не удалось переименовать"
-                    fi
-                fi
-                print ""
-            else
-                local ren_action
-                ren_action=$(printf "1  Найти и заменить\n2  Добавить префикс\n3  Добавить суффикс" | fzf \
-                    --prompt="  > " \
-                    --height=8 \
-                    --layout=reverse \
-                    --border=rounded \
-                    --border-label=" Переименовать ${#ren_items[@]} объектов " \
-                    --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-                    --pointer="▶" --no-multi)
-                [[ -z "$ren_action" ]] && continue
-
-                print -P "\n%B%F{cyan}Переименование: ${#ren_items[@]} объектов%f%b"
-                case "$ren_action" in
-                    *"Найти и заменить"*)
-                        print -P "%B%F{cyan}│%f%b Найти: \c";    read find_str
-                        print -P "%B%F{cyan}│%f%b Заменить: \c"; read repl_str
-                        for old in "${ren_items[@]}"; do
-                            local new="${old//${find_str}/${repl_str}}"
-                            if [[ "$new" != "$old" ]]; then
-                                mv "${current_dir}/${old}" "${current_dir}/${new}" 2>/dev/null && \
-                                    print -P "  %F{green}✓%f  ${old} → ${new}" || \
-                                    print -P "  %F{red}✗%f  ${old}"
-                            else
-                                print -P "  %F{yellow}–%f  ${old} (без изменений)"
-                            fi
-                        done ;;
-                    *"Добавить префикс"*)
-                        print -P "%B%F{cyan}│%f%b Префикс: \c"; read prefix
-                        for old in "${ren_items[@]}"; do
-                            mv "${current_dir}/${old}" "${current_dir}/${prefix}${old}" 2>/dev/null && \
-                                print -P "  %F{green}✓%f  ${old} → ${prefix}${old}" || \
-                                print -P "  %F{red}✗%f  ${old}"
-                        done ;;
-                    *"Добавить суффикс"*)
-                        print -P "%B%F{cyan}│%f%b Суффикс (перед расширением): \c"; read suffix
-                        for old in "${ren_items[@]}"; do
-                            if [[ "$old" == *.* ]]; then
-                                local new="${old%.*}${suffix}.${old##*.}"
-                            else
-                                local new="${old}${suffix}"
-                            fi
-                            mv "${current_dir}/${old}" "${current_dir}/${new}" 2>/dev/null && \
-                                print -P "  %F{green}✓%f  ${old} → ${new}" || \
-                                print -P "  %F{red}✗%f  ${old}"
-                        done ;;
-                esac
-                print ""
-            fi
-
-        # ── Enter / → — войти в папку или открыть файл ──────────────────────
+# ── ЗАПИСЬ В КОНФИГ ──────────────────────────────────────────────────────────
+_config_set() {
+    local key="$1" val="$2" tmpfile=$(mktemp) found=false
+    while IFS= read -r line; do
+        if [[ "$line" == "${key}="* ]]; then
+            echo "${key}=\"${val}\"" >> "$tmpfile"; found=true
         else
-            local first="${selections[1]}"
-            [[ -z "$first" ]] && continue
-            local fname="${first[4,-1]}"
-
-            if [[ "$fname" == ".." ]]; then
-                [[ "$current_dir" != "$SSD_PROJECTS_ROOT" ]] && current_dir="${current_dir:h}"
-            elif [[ "$first" == "▶"* ]]; then
-                current_dir="${current_dir}/${fname}"
-            else
-                for s in "${selections[@]}"; do
-                    local n="${s[4,-1]}"
-                    open "${current_dir}/${n}"
-                done
-            fi
+            echo "$line" >> "$tmpfile"
         fi
-    done
-
-    rm -f "$_act_f" "$_mod_f"
+    done < "$CONFIG_FILE"
+    [[ "$found" == false ]] && echo "${key}=\"${val}\"" >> "$tmpfile"
+    mv "$tmpfile" "$CONFIG_FILE"; source "$CONFIG_FILE"
 }
 
-# ── ВЕРСИЯ И ПРОВЕРКА ОБНОВЛЕНИЙ ─────────────────────────────────────────────
-PROJ_VERSION=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
+_config_del() {
+    grep -v "^${1}=" "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
+    mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"; source "$CONFIG_FILE"
+}
 
-# Фоновая проверка раз в 6 часов — не блокирует запуск
-(
-    if [[ ! -f "$_UPDATE_CACHE" ]] || \
-       (( $(date +%s) - $(stat -f%m "$_UPDATE_CACHE" 2>/dev/null || echo 0) > 21600 )); then
-        touch "$_UPDATE_CACHE"
-        if git -C "$STUDIO_DIR" fetch origin main --quiet 2>/dev/null; then
-            behind=$(git -C "$STUDIO_DIR" rev-list HEAD..origin/main --count 2>/dev/null)
-            if (( behind > 0 )); then
-                echo "$behind" > "$_UPDATE_FILE"
-            else
-                rm -f "$_UPDATE_FILE"
-            fi
-        fi
-    fi
-) &>/dev/null &
+# ════════════════════════════════════════════════════════════════════════════
+# СУБКОМАНДЫ
+# ════════════════════════════════════════════════════════════════════════════
 
-# ── ГЛАВНЫЙ ЦИКЛ ─────────────────────────────────────────────────────────────
-print -P "%F{240}  Ctrl+C для выхода%f"
-
-while true; do
-
-# ── МЕНЮ ────────────────────────────────────────────────────────────────────
-_MENU="1  Новый проект\n2  Проекты\n3  Статус проекта\n4  Синхронизировать footage"
-if [[ -f "$_UPDATE_FILE" ]]; then
-    _behind=$(cat "$_UPDATE_FILE")
-    _MENU+="\\n5  ⬆  Обновить  (${_behind} новых коммит(а))"
-fi
-
-action=$(printf "$_MENU" | fzf \
-    --prompt="  > " \
-    --height=12 \
-    --layout=reverse \
-    --border=rounded \
-    --border-label=" proj ${PROJ_VERSION} " \
-    --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-    --pointer="▶" \
-    --no-multi)
-
-[[ -z "$action" ]] && continue
-
-# ── НОВЫЙ ПРОЕКТ ─────────────────────────────────────────────────────────────
-if [[ "$action" == *"Новый проект"* ]]; then
-
+# ── proj new ─────────────────────────────────────────────────────────────────
+cmd_new() {
     print -P "\n%B%F{cyan}┌─ Новый проект ─────────────────────────┐%f%b"
-
-    print -P "%B%F{cyan}│%f%b Название: \c"
-    read PROJECT_NAME
+    print -P "%B%F{cyan}│%f%b Название: \c"; read PROJECT_NAME
     if [[ -z "$PROJECT_NAME" ]]; then
-        print -P "%F{red}Отменено.%f\n"
-        continue
+        print -P "%F{red}Отменено.%f\n"; return 1
     fi
 
-    print -P "%B%F{cyan}│%f%b Камер (1-10) [2]: \c"
-    read CAM_COUNT
+    print -P "%B%F{cyan}│%f%b Камер (1-10) [2]: \c"; read CAM_COUNT
     if ! [[ "$CAM_COUNT" =~ ^[0-9]+$ ]] || (( CAM_COUNT < 1 || CAM_COUNT > 10 )); then
         CAM_COUNT=2
     fi
-
     print -P "%B%F{cyan}└────────────────────────────────────────┘%f%b"
 
-    DATE=$(date +%Y-%m-%d)
-    SAFE_NAME="${PROJECT_NAME// /_}"
-    PROJECT_FOLDER_NAME="${DATE}_${SAFE_NAME}"
-    SSD_ROOT="${SSD_PROJECTS_ROOT}/${PROJECT_FOLDER_NAME}"
-    HDD_ROOT="${HDD_SOURCES_ROOT}/${PROJECT_FOLDER_NAME}"
+    local DATE=$(date +%Y-%m-%d)
+    local SAFE_NAME="${PROJECT_NAME// /_}"
+    local PROJECT_FOLDER_NAME="${DATE}_${SAFE_NAME}"
+    local SSD_ROOT="${SSD_PROJECTS_ROOT}/${PROJECT_FOLDER_NAME}"
+    local HDD_ROOT="${HDD_SOURCES_ROOT}/${PROJECT_FOLDER_NAME}"
 
     if [[ -d "$SSD_ROOT" ]]; then
-        print -P "\n%F{red}✗ Папка уже существует: ${SSD_ROOT}%f\n"
-        continue
+        print -P "\n%F{red}✗ Папка уже существует: ${SSD_ROOT}%f\n"; return 1
     fi
 
     print -P "\n%F{yellow}Создаю структуру...%f"
 
-    mkdir -p "${SSD_ROOT}/00_Admin"
-    mkdir -p "${SSD_ROOT}/01_Project_Files"/{Premiere,DaVinci,AfterEffects,Photoshop,Illustrator,Audition}
-    mkdir -p "${SSD_ROOT}/02_Sources"/{Video/{Screen_Cap,Stock_Archival},Audio/{Music,SFX,VoiceOver},Graphics/{Images,Vectors}}
-    mkdir -p "${SSD_ROOT}/03_Proxies"
-    mkdir -p "${SSD_ROOT}/04_Exports"/{01_Drafts,02_Handoff/{For_Color,For_Sound,For_CGI},03_Master,04_Socials}
-    mkdir -p "${SSD_ROOT}/99_Archive"
+    cp -r "${TEMPLATE_DIR}/." "$SSD_ROOT/"
     print -P "  %F{green}✓%f  Папки SSD"
 
     if [[ -f "$PREMIERE_TEMPLATE" ]]; then
@@ -343,9 +116,9 @@ if [[ "$action" == *"Новый проект"* ]]; then
     if [[ ! -d "$HDD_SOURCES_ROOT" ]]; then
         print -P "  %F{yellow}⚠%f  HDD не смонтирован, камеры пропущены"
     else
-        ALPHABET=( {a..z} )
+        local ALPHABET=( {a..z} )
         for (( i=1; i<=CAM_COUNT; i++ )); do
-            CAM="Cam_${ALPHABET[$i]}"
+            local CAM="Cam_${ALPHABET[$i]}"
             mkdir -p "${SSD_ROOT}/02_Sources/Video/${CAM}/Proxy"
             mkdir -p "${HDD_ROOT}/02_Sources/Video/${CAM}"
             print -P "  %F{green}✓%f  ${CAM}"
@@ -353,119 +126,93 @@ if [[ "$action" == *"Новый проект"* ]]; then
     fi
 
     print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f"
-    print -P "%F{cyan}│%f Открыть в Finder? [Y/n]: \c"
-    read OPEN_FINDER
-    if [[ "$OPEN_FINDER" != "n" && "$OPEN_FINDER" != "N" ]]; then
-        open "$SSD_ROOT"
+    print -P "%F{cyan}│%f Открыть в superfile? [Y/n]: \c"; read OPEN_SPF
+    if [[ "$OPEN_SPF" != "n" && "$OPEN_SPF" != "N" ]]; then
+        spf "$SSD_ROOT"
     fi
     print ""
+}
 
-# ── ПРОЕКТЫ ──────────────────────────────────────────────────────────────────
-elif [[ "$action" == *"Проекты"* ]]; then
-
-    proj_file_manager
-
-# ── СТАТУС ПРОЕКТА ────────────────────────────────────────────────────────────
-elif [[ "$action" == *"Статус проекта"* ]]; then
-
+# ── proj status ───────────────────────────────────────────────────────────────
+cmd_status() {
+    local chosen
     chosen=$(ls -1t "$SSD_PROJECTS_ROOT" 2>/dev/null | fzf \
         --prompt="  Проект > " \
         --height=40% \
         --border=rounded \
         --border-label=" Статус проекта " \
         --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-        --pointer="▶" \
-        --no-multi)
+        --pointer="▶" --no-multi)
+    [[ -z "$chosen" ]] && return
 
-    [[ -z "$chosen" ]] && continue
-
-    SSD_PROJECT="${SSD_PROJECTS_ROOT}/${chosen}"
-    HDD_PROJECT="${HDD_SOURCES_ROOT}/${chosen}"
+    local SSD_PROJECT="${SSD_PROJECTS_ROOT}/${chosen}"
+    local HDD_PROJECT="${HDD_SOURCES_ROOT}/${chosen}"
+    local total_hdd=0 total_symlinks=0 total_proxies=0
 
     print -P "\n%B%F{cyan}┌─ ${chosen}%f%b"
 
-    total_hdd=0
-    total_symlinks=0
-    total_proxies=0
-
     for ssd_cam in "${SSD_PROJECT}/02_Sources/Video"/Cam_*/; do
         [[ -d "$ssd_cam" ]] || continue
-        cam_name=$(basename "$ssd_cam")
-        hdd_cam="${HDD_PROJECT}/02_Sources/Video/${cam_name}"
-
-        ssd_links=$(find "$ssd_cam" -maxdepth 1 -type l | wc -l | tr -d ' ')
-        hdd_files=0
+        local cam_name=$(basename "$ssd_cam")
+        local hdd_cam="${HDD_PROJECT}/02_Sources/Video/${cam_name}"
+        local ssd_links=$(find "$ssd_cam" -maxdepth 1 -type l | wc -l | tr -d ' ')
+        local hdd_files=0
         [[ -d "$hdd_cam" ]] && hdd_files=$(find "$hdd_cam" -maxdepth 1 -type f | wc -l | tr -d ' ')
-        proxy_count=$(find "${ssd_cam}Proxy" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
-
+        local proxy_count=$(find "${ssd_cam}Proxy" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
         (( total_hdd += hdd_files ))
         (( total_symlinks += ssd_links ))
         (( total_proxies += proxy_count ))
-
-        if (( hdd_files > 0 && ssd_links == hdd_files )); then
-            icon="%F{green}✓%f"
-        elif (( ssd_links > 0 )); then
-            icon="%F{yellow}~%f"
-        else
-            icon="%F{red}○%f"
+        local icon
+        if (( hdd_files > 0 && ssd_links == hdd_files )); then icon="%F{green}✓%f"
+        elif (( ssd_links > 0 ));                           then icon="%F{yellow}~%f"
+        else                                                      icon="%F{red}○%f"
         fi
-
         print -P "%B%F{cyan}│%f%b  ${icon}  ${cam_name}   HDD: ${hdd_files}   симлинки: ${ssd_links}   прокси: ${proxy_count}"
     done
 
-    ssd_size=$(du -sh "$SSD_PROJECT" 2>/dev/null | cut -f1)
+    local ssd_size=$(du -sh "$SSD_PROJECT" 2>/dev/null | cut -f1)
     print -P "%B%F{cyan}│%f%b"
-    print -P "%B%F{cyan}│%f%b  SSD: ${ssd_size}   всего исходников: ${total_hdd}   симлинков: ${total_symlinks}   прокси: ${total_proxies}"
+    print -P "%B%F{cyan}│%f%b  SSD: ${ssd_size}   исходников: ${total_hdd}   симлинков: ${total_symlinks}   прокси: ${total_proxies}"
     print -P "%B%F{cyan}└────────────────────────────────────────┘%f%b\n"
+}
 
-# ── SYNC FOOTAGE ─────────────────────────────────────────────────────────────
-elif [[ "$action" == *"Синхронизировать footage"* ]]; then
-
+# ── proj sync ────────────────────────────────────────────────────────────────
+cmd_sync() {
     print -P "\n%B%F{cyan}Sync Footage%f%b\n"
 
     if [[ ! -d "$HDD_SOURCES_ROOT" ]]; then
-        print -P "%F{red}✗ HDD не смонтирован: ${HDD_SOURCES_ROOT}%f\n"
-        continue
+        print -P "%F{red}✗ HDD не смонтирован: ${HDD_SOURCES_ROOT}%f\n"; return 1
     fi
 
+    local chosen
     chosen=$(ls -1t "$SSD_PROJECTS_ROOT" 2>/dev/null | fzf \
         --prompt="  Проект > " \
         --height=40% \
         --border=rounded \
         --border-label=" Выберите проект " \
         --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-        --pointer="▶" \
-        --no-multi)
+        --pointer="▶" --no-multi)
+    [[ -z "$chosen" ]] && { print -P "%F{red}Отменено.%f\n"; return; }
 
-    if [[ -z "$chosen" ]]; then
-        print -P "%F{red}Отменено.%f\n"
-        continue
-    fi
-
-    SSD_PROJECT="${SSD_PROJECTS_ROOT}/${chosen}"
-    HDD_PROJECT="${HDD_SOURCES_ROOT}/${chosen}"
+    local SSD_PROJECT="${SSD_PROJECTS_ROOT}/${chosen}"
+    local HDD_PROJECT="${HDD_SOURCES_ROOT}/${chosen}"
 
     if [[ ! -d "$HDD_PROJECT" ]]; then
-        print -P "%F{red}✗ Проект не найден на HDD: ${HDD_PROJECT}%f\n"
-        continue
+        print -P "%F{red}✗ Проект не найден на HDD: ${HDD_PROJECT}%f\n"; return 1
     fi
 
     print -P "%B▶ Проект:%b ${chosen}\n"
-
-    synced=0
-    skipped=0
+    local synced=0 skipped=0
 
     for hdd_cam in "${HDD_PROJECT}/02_Sources/Video"/Cam_*(N/); do
-        cam_name=$(basename "$hdd_cam")
-        ssd_cam="${SSD_PROJECT}/02_Sources/Video/${cam_name}"
-
+        local cam_name=$(basename "$hdd_cam")
+        local ssd_cam="${SSD_PROJECT}/02_Sources/Video/${cam_name}"
         mkdir -p "${ssd_cam}/Proxy"
         print -P "%B%F{cyan}📁 ${cam_name}%f%b"
 
         for hdd_file in "${hdd_cam}/"*(N-.); do
-            filename=$(basename "$hdd_file")
-            ssd_link="${ssd_cam}/${filename}"
-
+            local filename=$(basename "$hdd_file")
+            local ssd_link="${ssd_cam}/${filename}"
             if [[ ! -e "$ssd_link" && ! -L "$ssd_link" ]]; then
                 ln -s "$hdd_file" "$ssd_link"
                 (( synced++ ))
@@ -476,9 +223,8 @@ elif [[ "$action" == *"Синхронизировать footage"* ]]; then
         done
 
         for proxy_file in "${hdd_cam}/Proxy/"*(N-.); do
-            filename=$(basename "$proxy_file")
-            ssd_proxy="${ssd_cam}/Proxy/${filename}"
-
+            local filename=$(basename "$proxy_file")
+            local ssd_proxy="${ssd_cam}/Proxy/${filename}"
             if [[ ! -e "$ssd_proxy" ]]; then
                 copy_with_progress "$proxy_file" "$ssd_proxy" "Proxy/${filename}" || true
                 (( synced++ ))
@@ -489,24 +235,149 @@ elif [[ "$action" == *"Синхронизировать footage"* ]]; then
     done
 
     afplay /System/Library/Sounds/Glass.aiff 2>/dev/null || true
-    print -P "\n%F{green}%B✅ Синхронизация завершена:%b ${synced} новых, ${skipped} уже было.%f"
-    print -P "%F{240}  Enter — в главное меню%f"
-    read -rs _
+    print -P "\n%F{green}%B✅ Синхронизация завершена:%b ${synced} новых, ${skipped} уже было.%f\n"
+}
 
-# ── ОБНОВИТЬ ─────────────────────────────────────────────────────────────────
-elif [[ "$action" == *"Обновить"* ]]; then
+# ── proj settings ────────────────────────────────────────────────────────────
+cmd_settings() {
+    while true; do
+        source "$CONFIG_FILE"
+        local _del_f=$(mktemp); : > "$_del_f"
+        local _del_t="execute-silent(echo d > ${_del_f})+accept"
 
+        local result
+        result=$(printf \
+            "  SSD_PROJECTS_ROOT    %s\n  HDD_SOURCES_ROOT     %s\n  PREMIERE_TEMPLATE    %s\n  Шаблон папок" \
+            "$SSD_PROJECTS_ROOT" "$HDD_SOURCES_ROOT" "$PREMIERE_TEMPLATE" \
+            | fzf \
+            --prompt="  > " --height=12 --layout=reverse --border=rounded \
+            --border-label=" Настройки " \
+            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
+            --pointer="▶" --no-multi --expect="ctrl-r" \
+            --bind="del:${_del_t}" --bind="bspace:${_del_t}" \
+            --header="  Enter/Ctrl+R: изменить   Del: сбросить   Esc: назад")
+
+        local is_delete=false
+        [[ -s "$_del_f" ]] && is_delete=true
+        rm -f "$_del_f"
+        [[ -z "$result" ]] && break
+
+        local lines=("${(@f)result}"); local selected="${lines[2]}"
+        [[ -z "$selected" ]] && continue
+
+        if [[ "$selected" == *"Шаблон папок"* ]]; then
+            ( cd "$TEMPLATE_DIR" && spf ); continue
+        fi
+
+        local setting_key setting_val
+        case "$selected" in
+            *"SSD_PROJECTS_ROOT"*) setting_key="SSD_PROJECTS_ROOT"; setting_val="$SSD_PROJECTS_ROOT" ;;
+            *"HDD_SOURCES_ROOT"*)  setting_key="HDD_SOURCES_ROOT";  setting_val="$HDD_SOURCES_ROOT"  ;;
+            *"PREMIERE_TEMPLATE"*) setting_key="PREMIERE_TEMPLATE"; setting_val="$PREMIERE_TEMPLATE" ;;
+        esac
+        [[ -z "$setting_key" ]] && continue
+
+        if $is_delete; then
+            print -P "\n%F{yellow}Сбросить %B${setting_key}%b? [y/N]: \c"
+            read CONFIRM </dev/tty
+            if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
+                _config_del "$setting_key"
+                print -P "  %F{red}✗%f  ${setting_key} удалён\n"
+            fi
+        else
+            print -P "\n%B%F{cyan}┌─ ${setting_key}%f%b"
+            print -P "%B%F{cyan}│%f%b \c"
+            local new_val="$setting_val"
+            vared new_val
+            print -P "%B%F{cyan}└────────────────────────────────────────┘%f%b"
+            if [[ -n "$new_val" && "$new_val" != "$setting_val" ]]; then
+                _config_set "$setting_key" "$new_val"
+                print -P "  %F{green}✓%f  Сохранено\n"
+            fi
+        fi
+    done
+}
+
+# ── proj update ───────────────────────────────────────────────────────────────
+cmd_update() {
     print -P "\n%B%F{cyan}Обновление Studio Tools...%f%b\n"
     if git -C "$STUDIO_DIR" pull; then
         cp "${STUDIO_DIR}/bin/proj" "$HOME/bin/proj" && chmod +x "$HOME/bin/proj"
         rm -f "$_UPDATE_FILE"
-        local_ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null)
-        print -P "\n%F{green}%B✅ Обновлено до ${local_ver}. Перезапусти proj.%f%b\n"
-        exit 0
+        local ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null)
+        print -P "\n%F{green}%B✅ Обновлено до ${ver}. Перезапусти proj.%f%b\n"
     else
-        print -P "\n%F{red}✗ Ошибка. Проверь соединение или запусти: git -C ~/.studio-tools pull%f\n"
+        print -P "\n%F{red}✗ Ошибка. Запусти: git -C ~/.studio-tools pull%f\n"
     fi
+}
 
-fi
+# ── proj help ────────────────────────────────────────────────────────────────
+cmd_help() {
+    print -P "
+%B%F{cyan}proj ${PROJ_VERSION}%f%b — Studio Tools
 
-done
+  %Bproj%b                Открыть проекты в superfile
+  %Bproj new%b            Создать новый проект
+  %Bproj status%b         Статус проекта (HDD / симлинки / прокси)
+  %Bproj sync%b           Синхронизировать footage с HDD
+  %Bproj settings%b       Настройки (пути, шаблон папок)
+  %Bproj template%b       Редактировать шаблон папок в superfile
+  %Bproj update%b         Обновить studio-tools
+
+%F{240}  Из superfile: нажми : и введи нужную команду (proj new, proj sync...)%f
+"
+}
+
+# ════════════════════════════════════════════════════════════════════════════
+# РОУТЕР
+# ════════════════════════════════════════════════════════════════════════════
+
+# Фоновая проверка обновлений
+(
+    if [[ ! -f "$_UPDATE_CACHE" ]] || \
+       (( $(date +%s) - $(stat -f%m "$_UPDATE_CACHE" 2>/dev/null || echo 0) > 21600 )); then
+        touch "$_UPDATE_CACHE"
+        if git -C "$STUDIO_DIR" fetch origin main --quiet 2>/dev/null; then
+            local behind=$(git -C "$STUDIO_DIR" rev-list HEAD..origin/main --count 2>/dev/null)
+            (( behind > 0 )) && echo "$behind" > "$_UPDATE_FILE" || rm -f "$_UPDATE_FILE"
+        fi
+    fi
+) &>/dev/null &
+
+case "$1" in
+    new)      cmd_new ;;
+    status)   cmd_status ;;
+    sync)     cmd_sync ;;
+    settings) cmd_settings ;;
+    template) ( cd "$TEMPLATE_DIR" && spf ) ;;
+    update)   cmd_update ;;
+    help|-h|--help) cmd_help ;;
+    "")
+        [[ -f "$_UPDATE_FILE" ]] && \
+            print -P "%F{yellow}  ⬆  Доступно обновление → proj update%f"
+        while true; do
+            ( cd "$SSD_PROJECTS_ROOT" && spf )
+            local _next
+            _next=$(printf \
+                "  ↩  Вернуться в файловый менеджер\n  ＋  Новый проект\n  ⬇  Синхронизировать footage\n  ◎  Статус проекта\n  ⚙  Настройки\n  ✕  Выйти" \
+                | fzf \
+                --prompt="  > " --height=11 --layout=reverse --border=rounded \
+                --border-label=" Studio Tools " \
+                --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
+                --pointer="▶" --no-multi)
+            [[ -z "$_next" ]] && break
+            case "$_next" in
+                *"Вернуться"*)  ;;
+                *"Новый"*)      cmd_new ;;
+                *"Синхрон"*)    cmd_sync ;;
+                *"Статус"*)     cmd_status ;;
+                *"Настройки"*)  cmd_settings ;;
+                *"Выйти"*)      break ;;
+            esac
+        done
+        ;;
+    *)
+        print -P "%F{red}Неизвестная команда: $1%f"
+        cmd_help; exit 1
+        ;;
+esac

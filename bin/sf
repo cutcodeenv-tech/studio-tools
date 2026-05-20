@@ -1,8 +1,13 @@
 #!/bin/zsh
 
 # ── КОНФИГ ──────────────────────────────────────────────────────────────────
-SSD_PROJECTS_ROOT="/Volumes/01_Extreme SSD/[001] Projects"
-HDD_SOURCES_ROOT="/Volumes/HDD_1"
+_SF_CONFIG="$HOME/.studio-tools/config"
+if [[ -f "$_SF_CONFIG" ]]; then
+    source "$_SF_CONFIG"
+else
+    SSD_PROJECTS_ROOT="/Volumes/01_Extreme SSD/[001] Projects"
+    HDD_SOURCES_ROOT="/Volumes/HDD_1"
+fi
 # ────────────────────────────────────────────────────────────────────────────
 
 print -P "\n%B%F{cyan}Sync Footage%f%b\n"

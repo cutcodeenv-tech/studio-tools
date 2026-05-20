@@ -17,15 +17,21 @@ else
     echo "✓ fzf"
 fi
 
-# 3. ~/bin
+# 3. ~/bin и ~/.studio-tools
 mkdir -p "$HOME/bin"
+mkdir -p "$HOME/.studio-tools"
 echo "✓ ~/bin"
+echo "✓ ~/.studio-tools"
 
 # 4. Копируем команды
 SCRIPT_DIR="${0:A:h}"
 cp "${SCRIPT_DIR}/bin/proj" "$HOME/bin/proj"
 chmod +x "$HOME/bin/proj"
 echo "✓ proj → ~/bin/"
+
+cp "${SCRIPT_DIR}/bin/sf" "$HOME/bin/sf"
+chmod +x "$HOME/bin/sf"
+echo "✓ sf → ~/bin/"
 
 # 5. PATH в .zshrc
 if ! grep -q 'PATH.*HOME/bin\|HOME/bin.*PATH' "$HOME/.zshrc" 2>/dev/null; then
@@ -37,4 +43,5 @@ fi
 
 echo "\n✅ Готово! Перезапусти терминал или выполни:\n"
 echo "   source ~/.zshrc\n"
-echo "Команда: proj\n"
+echo "Команды: proj   sf\n"
+echo "Настройки: proj → пункт 5 Настройки\n"
