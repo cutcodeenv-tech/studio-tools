@@ -20,10 +20,45 @@ source "$CONFIG_FILE"
 
 [[ ! -d "$TEMPLATE_DIR" ]] && mkdir -p "$TEMPLATE_DIR"
 
-if ! command -v spf &>/dev/null; then
-    print -P "%F{red}✗ superfile не установлен. Запусти: brew install superfile%f\n"
-    exit 1
-fi
+_check_deps() {
+    local _cache="${STUDIO_DIR}/.deps_ok"
+    if [[ -f "$_cache" ]] && \
+       (( $(date +%s) - $(stat -f%m "$_cache" 2>/dev/null || echo 0) < 86400 )); then
+        return 0
+    fi
+
+    if ! command -v brew &>/dev/null; then
+        print -P "%F{red}✗ Homebrew не установлен.%f"
+        print -P "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+        return 1
+    fi
+
+    local _any=false
+
+    if ! command -v fzf &>/dev/null; then
+        print -P "%F{cyan}  → Устанавливаю fzf...%f"
+        brew install fzf; _any=true
+    fi
+    if ! command -v spf &>/dev/null; then
+        print -P "%F{cyan}  → Устанавливаю superfile...%f"
+        brew install superfile; _any=true
+    fi
+
+    local _font_ok=false
+    for _d in "$HOME/Library/Fonts" "/Library/Fonts"; do
+        ls "$_d" 2>/dev/null | grep -qi "JetBrainsMono.*Nerd" && { _font_ok=true; break; }
+    done
+    if [[ "$_font_ok" == false ]]; then
+        print -P "%F{cyan}  → Устанавливаю JetBrains Mono Nerd Font...%f"
+        brew install --cask font-jetbrains-mono-nerd-font; _any=true
+        print -P "%F{yellow}  ⚠  Выбери 'JetBrainsMono Nerd Font' в настройках терминала%f"
+    fi
+
+    [[ "$_any" == true ]] && print ""
+    touch "$_cache"
+    return 0
+}
+_check_deps || exit 1
 # ────────────────────────────────────────────────────────────────────────────
 
 PROJ_VERSION=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
