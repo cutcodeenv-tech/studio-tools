@@ -104,10 +104,11 @@ case "$_OS" in
 esac
 
 if [[ -d "$STUDIO_DIR/yazi" ]]; then
-    mkdir -p "$_YAZI_CFG"
+    mkdir -p "$_YAZI_CFG/plugins/proj.yazi"
     cp "$STUDIO_DIR/yazi/keymap.toml" "$_YAZI_CFG/keymap.toml"
     cp "$STUDIO_DIR/yazi/yazi.toml"   "$_YAZI_CFG/yazi.toml"
-    printf "✓ yazi config (keymap + settings)\n"
+    cp "$STUDIO_DIR/yazi/plugins/proj.yazi/init.lua" "$_YAZI_CFG/plugins/proj.yazi/init.lua"
+    printf "✓ yazi config + proj plugin\n"
 fi
 
 # ── ~/bin/proj ────────────────────────────────────────────────────────────────

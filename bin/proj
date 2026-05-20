@@ -407,10 +407,11 @@ cmd_update() {
         if [[ -d "$_yazi_src" ]]; then
             local _yazi_cfg="$HOME/.config/yazi"
             [[ "$_OS" == "windows" ]] && _yazi_cfg="${APPDATA}/yazi/config"
-            mkdir -p "$_yazi_cfg"
-            cp "${_yazi_src}/keymap.toml" "$_yazi_cfg/keymap.toml"
-            cp "${_yazi_src}/yazi.toml"   "$_yazi_cfg/yazi.toml"
-            print -P "  %F{green}✓%f  yazi keymap + config"
+            mkdir -p "${_yazi_cfg}/plugins/proj.yazi"
+            cp "${_yazi_src}/keymap.toml" "${_yazi_cfg}/keymap.toml"
+            cp "${_yazi_src}/yazi.toml"   "${_yazi_cfg}/yazi.toml"
+            cp "${_yazi_src}/plugins/proj.yazi/init.lua" "${_yazi_cfg}/plugins/proj.yazi/init.lua"
+            print -P "  %F{green}✓%f  yazi config + proj plugin"
         fi
 
         rm -f "$_UPDATE_FILE"

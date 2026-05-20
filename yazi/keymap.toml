@@ -99,7 +99,7 @@ desc = "Выделить всё"
 
 [[manager.prepend_keymap]]
 on = "\\"
-run = "shell --block 'proj menu'"
+run = "plugin proj"
 desc = "Proj: меню команд"
 
 # Прямые вызовы через g-prefix (работают даже если не видны в попапе)

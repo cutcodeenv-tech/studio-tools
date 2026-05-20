@@ -30,9 +30,10 @@ cp "${REPO_DIR}/bin/proj" "$HOME/bin/proj"
 chmod +x "$HOME/bin/proj"
 print -P "  %F{green}✓%f  ~/bin/proj обновлён"
 
-mkdir -p "$HOME/.config/yazi"
+mkdir -p "$HOME/.config/yazi/plugins/proj.yazi"
 cp "${REPO_DIR}/yazi/keymap.toml" "$HOME/.config/yazi/keymap.toml"
 cp "${REPO_DIR}/yazi/yazi.toml"   "$HOME/.config/yazi/yazi.toml"
+cp "${REPO_DIR}/yazi/plugins/proj.yazi/init.lua" "$HOME/.config/yazi/plugins/proj.yazi/init.lua"
 print -P "  %F{green}✓%f  ~/.config/yazi обновлён"
 
 print -P "\n%F{green}%B✅ Загружено на GitHub.%f%b\n"
