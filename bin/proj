@@ -379,6 +379,21 @@ cmd_update() {
     print -P "\n%B%F{cyan}Обновление Studio Tools...%f%b\n"
     if git -C "$STUDIO_DIR" pull; then
         cp "${STUDIO_DIR}/bin/proj" "$HOME/bin/proj" && chmod +x "$HOME/bin/proj"
+        print -P "  %F{green}✓%f  bin/proj"
+
+        local _spf_src="${STUDIO_DIR}/spf/superfile"
+        if [[ -d "$_spf_src" ]]; then
+            case "$_OS" in
+                macos)   local _spf_cfg="$HOME/Library/Application Support/superfile" ;;
+                windows) local _spf_cfg="$APPDATA/superfile" ;;
+                linux)   local _spf_cfg="$HOME/.config/superfile" ;;
+            esac
+            mkdir -p "$_spf_cfg"
+            cp "${_spf_src}/hotkeys.toml" "$_spf_cfg/hotkeys.toml"
+            cp "${_spf_src}/config.toml"  "$_spf_cfg/config.toml"
+            print -P "  %F{green}✓%f  superfile hotkeys + config"
+        fi
+
         rm -f "$_UPDATE_FILE"
         local ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null)
         print -P "\n%F{green}%B✅ Обновлено до ${ver}. Перезапусти proj.%f%b\n"
