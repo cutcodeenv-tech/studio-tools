@@ -97,6 +97,20 @@ else
     printf "✓ JetBrains Mono Nerd Font\n"
 fi
 
+# ── superfile config (hotkeys + config) ──────────────────────────────────────
+case "$_OS" in
+    macos)   _SPF_CFG="$HOME/Library/Application Support/superfile" ;;
+    windows) _SPF_CFG="$APPDATA/superfile" ;;
+    linux)   _SPF_CFG="$HOME/.config/superfile" ;;
+esac
+
+if [[ -d "$STUDIO_DIR/config/superfile" ]]; then
+    mkdir -p "$_SPF_CFG"
+    cp "$STUDIO_DIR/config/superfile/hotkeys.toml" "$_SPF_CFG/hotkeys.toml"
+    cp "$STUDIO_DIR/config/superfile/config.toml"  "$_SPF_CFG/config.toml"
+    printf "✓ superfile config (hotkeys + theme)\n"
+fi
+
 # ── ~/bin/proj ────────────────────────────────────────────────────────────────
 mkdir -p "$HOME/bin"
 cp "$STUDIO_DIR/bin/proj" "$HOME/bin/proj"
