@@ -107,7 +107,7 @@ if [[ -d "$STUDIO_DIR/yazi" ]]; then
     mkdir -p "$_YAZI_CFG/plugins/proj.yazi"
     cp "$STUDIO_DIR/yazi/keymap.toml" "$_YAZI_CFG/keymap.toml"
     cp "$STUDIO_DIR/yazi/yazi.toml"   "$_YAZI_CFG/yazi.toml"
-    cp "$STUDIO_DIR/yazi/plugins/proj.yazi/init.lua" "$_YAZI_CFG/plugins/proj.yazi/init.lua"
+    cp "$STUDIO_DIR/yazi/plugins/proj.yazi/main.lua" "$_YAZI_CFG/plugins/proj.yazi/main.lua"
     printf "✓ yazi config + proj plugin\n"
 fi
 

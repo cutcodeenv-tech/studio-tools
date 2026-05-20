@@ -1,124 +1,119 @@
 # ── Русская раскладка ЙЦУКЕН ─────────────────────────────────────────────────
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "й"  # q
 run = "quit"
 desc = "Выйти"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "о"  # j
 run = "arrow 1"
 desc = "↓"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "л"  # k
 run = "arrow -1"
 desc = "↑"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "д"  # l
 run = "enter"
 desc = "Открыть"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "р"  # h
 run = "leave"
 desc = "← Назад"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "О"  # J — select down
 run = ["select --state=true", "arrow 1"]
 desc = "Выделить ↓"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "Л"  # K — select up
 run = ["select --state=true", "arrow -1"]
 desc = "Выделить ↑"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "м"  # v
 run = "visual_mode"
 desc = "Режим выделения"
 
-[[manager.prepend_keymap]]
-on = "я"  # z
-run = "plugin zoxide"
-desc = "Zoxide"
-
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "ю"  # .
 run = "hidden toggle"
 desc = "Скрытые файлы"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "с"  # c
 run = "yank"
 desc = "Копировать путь"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "щ"  # o
 run = "open"
 desc = "Открыть файл"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "у"  # e
 run = "open --interactive"
 desc = "Открыть в редакторе"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "ф"  # a
 run = "create"
 desc = "Создать файл/папку"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "к"  # r
 run = "rename --cursor=before_ext"
 desc = "Переименовать"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "В"  # D
 run = "remove --permanently"
 desc = "Удалить навсегда"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "ч"  # x
 run = "cut"
 desc = "Вырезать"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "з"  # p
 run = "paste"
 desc = "Вставить"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "Ф"  # A
 run = "select_all --state=true"
 desc = "Выделить всё"
 
-# ── Proj меню (\ → выбор команды) ────────────────────────────────────────────
+# ── Proj меню ────────────────────────────────────────────────────────────────
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = "\\"
 run = "plugin proj"
 desc = "Proj: меню команд"
 
-# Прямые вызовы через g-prefix (работают даже если не видны в попапе)
-[[manager.prepend_keymap]]
+# Прямые вызовы через g-prefix
+[[mgr.prepend_keymap]]
 on = ["g", "n"]
 run = "shell --block 'proj new'"
 desc = "Proj: новый проект"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = ["g", "s"]
 run = "shell --block 'proj sync'"
 desc = "Proj: синхронизировать"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = ["g", "p"]
 run = "shell --block 'proj status'"
 desc = "Proj: статус"
 
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 on = ["g", ","]
 run = "shell --block 'proj settings'"
 desc = "Proj: настройки"

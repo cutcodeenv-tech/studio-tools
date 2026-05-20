@@ -75,6 +75,14 @@ _check_deps() {
         esac
         _any=true
     fi
+    if ! command -v chafa &>/dev/null; then
+        print -P "%F{cyan}  → Устанавливаю chafa (предпросмотр картинок)...%f"
+        case "$_OS" in
+            macos)   brew install chafa ;;
+            windows) scoop install chafa ;;
+        esac
+        _any=true
+    fi
 
     local _font_ok=false
     case "$_OS" in
@@ -410,7 +418,7 @@ cmd_update() {
             mkdir -p "${_yazi_cfg}/plugins/proj.yazi"
             cp "${_yazi_src}/keymap.toml" "${_yazi_cfg}/keymap.toml"
             cp "${_yazi_src}/yazi.toml"   "${_yazi_cfg}/yazi.toml"
-            cp "${_yazi_src}/plugins/proj.yazi/init.lua" "${_yazi_cfg}/plugins/proj.yazi/init.lua"
+            cp "${_yazi_src}/plugins/proj.yazi/main.lua" "${_yazi_cfg}/plugins/proj.yazi/main.lua"
             print -P "  %F{green}✓%f  yazi config + proj plugin"
         fi
 
