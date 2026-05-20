@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
+# Запускай из папки куда клонирован репо:
+#   git clone https://github.com/cutcodeenv-tech/studio-tools.git ~/.studio-tools
+#   cd ~/.studio-tools && bash setup.sh
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+STUDIO_DIR="$HOME/.studio-tools"
 
 # ── Detect OS ─────────────────────────────────────────────────────────────────
 case "$OSTYPE" in
@@ -11,6 +15,14 @@ case "$OSTYPE" in
 esac
 
 printf "\n▶ Studio Tools — Setup ($_OS)\n\n"
+
+# ── Если репо не в ~/.studio-tools — копируем ─────────────────────────────────
+if [[ "$SCRIPT_DIR" != "$STUDIO_DIR" ]]; then
+    printf "→ Копирую в ~/.studio-tools...\n"
+    mkdir -p "$STUDIO_DIR"
+    cp -r "$SCRIPT_DIR/." "$STUDIO_DIR/"
+    printf "✓ ~/.studio-tools\n"
+fi
 
 # ── Package manager ───────────────────────────────────────────────────────────
 case "$_OS" in
@@ -27,17 +39,11 @@ case "$_OS" in
             export PATH="$HOME/scoop/shims:$PATH"
         fi
         printf "✓ Scoop\n"
-
         if ! command -v zsh &>/dev/null; then
             printf "→ Устанавливаю zsh...\n"
             scoop install zsh
         fi
         printf "✓ zsh\n"
-        ;;
-    linux)
-        if ! command -v brew &>/dev/null && ! command -v apt-get &>/dev/null && ! command -v dnf &>/dev/null; then
-            printf "⚠  Пакетный менеджер не найден. Установи зависимости вручную.\n"
-        fi
         ;;
 esac
 
@@ -69,8 +75,7 @@ fi
 _font_ok=false
 case "$_OS" in
     macos)
-        ls ~/Library/Fonts 2>/dev/null | grep -qi "JetBrainsMono.*Nerd" && _font_ok=true
-        ls /Library/Fonts  2>/dev/null | grep -qi "JetBrainsMono.*Nerd" && _font_ok=true
+        { ls ~/Library/Fonts 2>/dev/null || ls /Library/Fonts 2>/dev/null; } | grep -qi "JetBrainsMono.*Nerd" && _font_ok=true
         ;;
     windows)
         ls "$USERPROFILE/AppData/Local/Microsoft/Windows/Fonts" 2>/dev/null | grep -qi "JetBrainsMono" && _font_ok=true
@@ -92,9 +97,9 @@ else
     printf "✓ JetBrains Mono Nerd Font\n"
 fi
 
-# ── Copy proj ─────────────────────────────────────────────────────────────────
-mkdir -p "$HOME/bin" "$HOME/.studio-tools"
-cp "${SCRIPT_DIR}/bin/proj" "$HOME/bin/proj"
+# ── ~/bin/proj ────────────────────────────────────────────────────────────────
+mkdir -p "$HOME/bin"
+cp "$STUDIO_DIR/bin/proj" "$HOME/bin/proj"
 chmod +x "$HOME/bin/proj"
 printf "✓ proj → ~/bin/\n"
 
@@ -108,14 +113,10 @@ _add_path() {
 }
 
 case "$_OS" in
-    macos)
-        _add_path "$HOME/.zshrc"
-        ;;
-    windows|linux)
-        _add_path "$HOME/.bashrc"
-        _add_path "$HOME/.bash_profile"
-        ;;
+    macos)   _add_path "$HOME/.zshrc" ;;
+    windows|linux) _add_path "$HOME/.bashrc"; _add_path "$HOME/.bash_profile" ;;
 esac
 
-printf "\n✅ Готово! Перезапусти терминал или выполни: source ~/.zshrc\n\n"
-printf "Команда: proj\n\n"
+printf "\n✅ Готово!\n\n"
+printf "  Перезапусти терминал или: source ~/.zshrc\n"
+printf "  Затем введи: proj\n\n"

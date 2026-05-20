@@ -6,11 +6,21 @@
 
 Одна команда — клонирует в `~/.studio-tools` и настраивает всё автоматически:
 
+**macOS / Linux:**
 ```zsh
-git clone https://github.com/cutcodeenv-tech/studio-tools.git ~/.studio-tools && ~/.studio-tools/setup.sh && source ~/.zshrc
+git clone https://github.com/cutcodeenv-tech/studio-tools.git ~/.studio-tools && bash ~/.studio-tools/setup.sh && source ~/.zshrc
 ```
 
-`setup.sh` устанавливает `fzf` (если не установлен) и добавляет команду `proj` в терминал.
+**Windows (Git Bash):**
+```bash
+git clone https://github.com/cutcodeenv-tech/studio-tools.git ~/.studio-tools && bash ~/.studio-tools/setup.sh
+```
+
+`setup.sh` автоматически определяет систему и устанавливает все зависимости:
+- macOS: Homebrew → fzf, superfile, JetBrains Mono Nerd Font
+- Windows: Scoop → zsh, fzf, superfile, JetBrainsMono-NF
+
+После установки выбери **JetBrainsMono Nerd Font** в настройках терминала для отображения иконок.
 
 ## Использование
 
