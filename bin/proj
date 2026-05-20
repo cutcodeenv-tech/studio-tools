@@ -416,12 +416,12 @@ cmd_update() {
             local _yazi_cfg="$HOME/.config/yazi"
             [[ "$_OS" == "windows" ]] && _yazi_cfg="${APPDATA}/yazi/config"
             mkdir -p "${_yazi_cfg}/plugins/proj.yazi"
+            mkdir -p "${_yazi_cfg}/flavors"
             cp "${_yazi_src}/keymap.toml"  "${_yazi_cfg}/keymap.toml"
             cp "${_yazi_src}/yazi.toml"    "${_yazi_cfg}/yazi.toml"
             cp "${_yazi_src}/theme.toml"   "${_yazi_cfg}/theme.toml"
-            cp "${_yazi_src}/package.toml" "${_yazi_cfg}/package.toml"
             cp "${_yazi_src}/plugins/proj.yazi/main.lua" "${_yazi_cfg}/plugins/proj.yazi/main.lua"
-            ya pkg install 2>/dev/null
+            cp -r "${_yazi_src}/flavors/catppuccin-mocha.yazi" "${_yazi_cfg}/flavors/"
             print -P "  %F{green}✓%f  yazi config + proj plugin + тема"
         fi
 

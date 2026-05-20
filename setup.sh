@@ -105,12 +105,13 @@ esac
 
 if [[ -d "$STUDIO_DIR/yazi" ]]; then
     mkdir -p "$_YAZI_CFG/plugins/proj.yazi"
+    mkdir -p "$_YAZI_CFG/flavors"
     cp "$STUDIO_DIR/yazi/keymap.toml"  "$_YAZI_CFG/keymap.toml"
     cp "$STUDIO_DIR/yazi/yazi.toml"    "$_YAZI_CFG/yazi.toml"
     cp "$STUDIO_DIR/yazi/theme.toml"   "$_YAZI_CFG/theme.toml"
-    cp "$STUDIO_DIR/yazi/package.toml" "$_YAZI_CFG/package.toml"
     cp "$STUDIO_DIR/yazi/plugins/proj.yazi/main.lua" "$_YAZI_CFG/plugins/proj.yazi/main.lua"
-    ya pkg install 2>/dev/null && printf "✓ yazi config + proj plugin + catppuccin тема\n" || printf "✓ yazi config + proj plugin\n"
+    cp -r "$STUDIO_DIR/yazi/flavors/catppuccin-mocha.yazi" "$_YAZI_CFG/flavors/"
+    printf "✓ yazi config + proj plugin + catppuccin тема\n"
 fi
 
 # ── ~/bin/proj ────────────────────────────────────────────────────────────────
