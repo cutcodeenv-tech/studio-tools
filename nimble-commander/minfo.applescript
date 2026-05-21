@@ -1,58 +1,137 @@
 on open fileList
     set filePath to POSIX path of (item 1 of fileList)
-    set mediainfoBin to "/opt/homebrew/bin/mediainfo"
+    set mi to "/opt/homebrew/bin/mediainfo"
     set q to quoted form of filePath
 
     try
-        do shell script "test -f " & mediainfoBin
+        do shell script "test -f " & mi
     on error
-        display alert "minfo" message "mediainfo не установлен. Запусти: brew install mediainfo" as warning
+        display alert "minfo" message "mediainfo не установлен.  brew install mediainfo" as warning
         return
     end try
 
-    set vFormat     to do shell script mediainfoBin & " --Inform='Video;%Format%' " & q
-    set vProfile    to do shell script mediainfoBin & " --Inform='Video;%Format_Profile%' " & q
-    set vWidth      to do shell script mediainfoBin & " --Inform='Video;%Width%' " & q
-    set vHeight     to do shell script mediainfoBin & " --Inform='Video;%Height%' " & q
-    set vFps        to do shell script mediainfoBin & " --Inform='Video;%FrameRate%' " & q
-    set vBitrate    to do shell script mediainfoBin & " --Inform='Video;%BitRate/String%' " & q
+    -- Одним вызовом на секцию
+    set vRaw to do shell script mi & " --Inform='Video;%Format%|%Format_Profile%|%Width%|%Height%|%FrameRate%|%BitRate/String%|%ScanType%|%ColorSpace%|%BitDepth%|%Duration/String3%' " & q
+    set aRaw to do shell script mi & " --Inform='Audio;%Format%|%Channel(s)/String%|%SamplingRate/String%|%BitRate/String%' " & q
+    set gRaw to do shell script mi & " --Inform='General;%Format%|%FileSize/String%|%Duration/String3%|%OverallBitRate/String%' " & q
+    set fName to do shell script "basename " & q
 
-    set aFormat     to do shell script mediainfoBin & " --Inform='Audio;%Format%' " & q
-    set aChannels   to do shell script mediainfoBin & " --Inform='Audio;%Channel(s)/String%' " & q
-    set aSampleRate to do shell script mediainfoBin & " --Inform='Audio;%SamplingRate/String%' " & q
+    -- Парсим видео
+    set vF to my field(vRaw, 1)
+    set vProf to my field(vRaw, 2)
+    set vW to my field(vRaw, 3)
+    set vH to my field(vRaw, 4)
+    set vFps to my field(vRaw, 5)
+    set vBr to my field(vRaw, 6)
+    set vScan to my field(vRaw, 7)
+    set vCS to my field(vRaw, 8)
+    set vBd to my field(vRaw, 9)
+    set vDur to my field(vRaw, 10)
 
-    set fContainer  to do shell script mediainfoBin & " --Inform='General;%Format%' " & q
-    set fSize       to do shell script mediainfoBin & " --Inform='General;%FileSize/String%' " & q
-    set fDuration   to do shell script mediainfoBin & " --Inform='General;%Duration/String3%' " & q
-    set fName       to do shell script "basename " & q
+    -- Парсим аудио
+    set aF to my field(aRaw, 1)
+    set aCh to my field(aRaw, 2)
+    set aSR to my field(aRaw, 3)
+    set aBr to my field(aRaw, 4)
 
+    -- Парсим общее
+    set gFmt to my field(gRaw, 1)
+    set gSize to my field(gRaw, 2)
+    set gDur to my field(gRaw, 3)
+    set gBr to my field(gRaw, 4)
+
+    set nl to return
+    set tab1 to "    "
     set msg to ""
 
-    if vFormat is not "" then
-        if vProfile is not "" then
-            set msg to msg & "🎬  " & vFormat & " (" & vProfile & ")" & return
-        else
-            set msg to msg & "🎬  " & vFormat & return
+    -- VIDEO
+    if vF is not "" then
+        set codec to vF
+        if vProf is not "" then set codec to codec & "  " & vProf
+        set msg to msg & "VIDEO" & nl
+        set msg to msg & tab1 & my row("Codec", codec) & nl
+        if vW is not "" then
+            set msg to msg & tab1 & my row("Resolution", vW & " × " & vH) & nl
         end if
-        if vWidth is not "" then
-            set msg to msg & "     " & vWidth & " × " & vHeight & "  •  " & vFps & " fps" & return
+        if vFps is not "" then
+            set fps to vFps
+            if vScan is not "" and vScan is not "Progressive" then
+                set fps to fps & "  " & vScan
+            end if
+            set msg to msg & tab1 & my row("Frame rate", fps) & nl
         end if
-        if vBitrate is not "" then
-            set msg to msg & "     " & vBitrate & return
+        if vBr is not "" then
+            set msg to msg & tab1 & my row("Bitrate", vBr) & nl
+        end if
+        if vDur is not "" then
+            set msg to msg & tab1 & my row("Duration", vDur) & nl
+        end if
+        set colorInfo to ""
+        if vCS is not "" then set colorInfo to vCS
+        if vBd is not "" then
+            if colorInfo is not "" then
+                set colorInfo to colorInfo & "  " & vBd & "-bit"
+            else
+                set colorInfo to vBd & "-bit"
+            end if
+        end if
+        if colorInfo is not "" then
+            set msg to msg & tab1 & my row("Color", colorInfo) & nl
         end if
     end if
 
-    if aFormat is not "" then
-        if msg is not "" then set msg to msg & return
-        set msg to msg & "🔊  " & aFormat
-        if aChannels is not "" then set msg to msg & "  •  " & aChannels
-        if aSampleRate is not "" then set msg to msg & "  •  " & aSampleRate
-        set msg to msg & return
+    -- AUDIO
+    if aF is not "" then
+        if msg is not "" then set msg to msg & nl
+        set msg to msg & "AUDIO" & nl
+        set msg to msg & tab1 & my row("Format", aF) & nl
+        if aCh is not "" then
+            set msg to msg & tab1 & my row("Channels", aCh) & nl
+        end if
+        if aSR is not "" then
+            set msg to msg & tab1 & my row("Sample rate", aSR) & nl
+        end if
+        if aBr is not "" then
+            set msg to msg & tab1 & my row("Bitrate", aBr) & nl
+        end if
     end if
 
-    if msg is not "" then set msg to msg & return
-    set msg to msg & "📁  " & fContainer & "  •  " & fSize
-    if fDuration is not "" then set msg to msg & "  •  " & fDuration
+    -- FILE
+    if msg is not "" then set msg to msg & nl
+    set msg to msg & "FILE" & nl
+    if gFmt is not "" then
+        set msg to msg & tab1 & my row("Container", gFmt) & nl
+    end if
+    if gSize is not "" then
+        set msg to msg & tab1 & my row("Size", gSize) & nl
+    end if
+    if gDur is not "" then
+        set msg to msg & tab1 & my row("Duration", gDur) & nl
+    end if
+    if gBr is not "" then
+        set msg to msg & tab1 & my row("Overall BR", gBr) & nl
+    end if
 
-    display dialog msg with title fName buttons {"OK"} default button 1 with icon note
+    display dialog msg with title fName buttons {"OK"} default button 1
 end open
+
+-- Получить N-е поле из строки с разделителем |
+on field(str, n)
+    set oldDelim to AppleScript's text item delimiters
+    set AppleScript's text item delimiters to "|"
+    set parts to text items of str
+    set AppleScript's text item delimiters to oldDelim
+    if n > (count of parts) then return ""
+    set val to item n of parts
+    if val is missing value then return ""
+    return val
+end field
+
+-- Форматировать строку "Label:   value" с выравниванием
+on row(label, value)
+    set padded to label & ":"
+    repeat while (length of padded) < 13
+        set padded to padded & " "
+    end repeat
+    return padded & " " & value
+end row
