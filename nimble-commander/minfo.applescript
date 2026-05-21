@@ -1,14 +1,8 @@
-on run argv
-    if (count of argv) = 0 then
-        display alert "minfo" message "Файл не указан." as warning
-        return
-    end if
-
-    set filePath to item 1 of argv
+on open fileList
+    set filePath to POSIX path of (item 1 of fileList)
     set mediainfoBin to "/opt/homebrew/bin/mediainfo"
     set q to quoted form of filePath
 
-    -- Проверка mediainfo
     try
         do shell script "test -f " & mediainfoBin
     on error
@@ -16,7 +10,6 @@ on run argv
         return
     end try
 
-    -- Видео
     set vFormat     to do shell script mediainfoBin & " --Inform='Video;%Format%' " & q
     set vProfile    to do shell script mediainfoBin & " --Inform='Video;%Format_Profile%' " & q
     set vWidth      to do shell script mediainfoBin & " --Inform='Video;%Width%' " & q
@@ -24,18 +17,15 @@ on run argv
     set vFps        to do shell script mediainfoBin & " --Inform='Video;%FrameRate%' " & q
     set vBitrate    to do shell script mediainfoBin & " --Inform='Video;%BitRate/String%' " & q
 
-    -- Аудио
     set aFormat     to do shell script mediainfoBin & " --Inform='Audio;%Format%' " & q
     set aChannels   to do shell script mediainfoBin & " --Inform='Audio;%Channel(s)/String%' " & q
     set aSampleRate to do shell script mediainfoBin & " --Inform='Audio;%SamplingRate/String%' " & q
 
-    -- Файл
     set fContainer  to do shell script mediainfoBin & " --Inform='General;%Format%' " & q
     set fSize       to do shell script mediainfoBin & " --Inform='General;%FileSize/String%' " & q
     set fDuration   to do shell script mediainfoBin & " --Inform='General;%Duration/String3%' " & q
     set fName       to do shell script "basename " & q
 
-    -- Формируем текст
     set msg to ""
 
     if vFormat is not "" then
@@ -65,4 +55,4 @@ on run argv
     if fDuration is not "" then set msg to msg & "  •  " & fDuration
 
     display dialog msg with title fName buttons {"OK"} default button 1 with icon note
-end run
+end open

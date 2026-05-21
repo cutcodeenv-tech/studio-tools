@@ -129,10 +129,10 @@ if [[ -f "$STUDIO_DIR/bin/sf" ]]; then
     printf "✓ sf → ~/bin/\n"
 fi
 
-if [[ -f "$STUDIO_DIR/bin/minfo" ]]; then
-    cp "$STUDIO_DIR/bin/minfo" "$HOME/bin/minfo"
-    chmod +x "$HOME/bin/minfo"
-    printf "✓ minfo → ~/bin/\n"
+if [[ "$_OS" == "macos" && -f "$STUDIO_DIR/nimble-commander/minfo.applescript" ]]; then
+    osacompile -o "$HOME/bin/minfo.app" "$STUDIO_DIR/nimble-commander/minfo.applescript" 2>/dev/null \
+        && printf "✓ minfo.app → ~/bin/\n" \
+        || printf "⚠  Не удалось скомпилировать minfo.app\n"
 fi
 
 # ── Nimble Commander tools ────────────────────────────────────────────────────

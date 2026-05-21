@@ -53,8 +53,8 @@ TOOLS = [
     },
     {
         "title": "mediainfo — попап",
-        "path": "/usr/bin/osascript",
-        "parameters": os.path.expanduser("~/.studio-tools/nimble-commander/minfo.applescript") + " %p",
+        "path": os.path.expanduser("~/bin/minfo.app"),
+        "parameters": "%p",
         "shortcut": "\x00",
         "startup": 0,
         "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567807",
