@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Запускай из папки куда клонирован репо:
-#   git clone https://github.com/cutcodeenv-tech/studio-tools.git ~/.studio-tools
-#   cd ~/.studio-tools && bash setup.sh
+# Установка одной командой:
+#   bash <(curl -fsSL https://raw.githubusercontent.com/cutcodeenv-tech/studio-tools/main/setup.sh)
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STUDIO_DIR="$HOME/.studio-tools"
+REPO_URL="https://github.com/cutcodeenv-tech/studio-tools.git"
 
 # ── Detect OS ─────────────────────────────────────────────────────────────────
 case "$OSTYPE" in
@@ -16,13 +15,16 @@ esac
 
 printf "\n▶ Studio Tools — Setup ($_OS)\n\n"
 
-# ── Если репо не в ~/.studio-tools — копируем ─────────────────────────────────
-if [[ "$SCRIPT_DIR" != "$STUDIO_DIR" ]]; then
-    printf "→ Копирую в ~/.studio-tools...\n"
-    mkdir -p "$STUDIO_DIR"
-    cp -r "$SCRIPT_DIR/." "$STUDIO_DIR/"
-    printf "✓ ~/.studio-tools\n"
+# ── Клонируем или обновляем репо ──────────────────────────────────────────────
+if [[ -d "$STUDIO_DIR/.git" ]]; then
+    printf "→ Обновляю ~/.studio-tools...\n"
+    git -C "$STUDIO_DIR" pull --ff-only && printf "✓ ~/.studio-tools\n"
+else
+    printf "→ Клонирую в ~/.studio-tools...\n"
+    git clone "$REPO_URL" "$STUDIO_DIR" && printf "✓ ~/.studio-tools\n"
 fi
+
+SCRIPT_DIR="$STUDIO_DIR"
 
 # ── Package manager ───────────────────────────────────────────────────────────
 case "$_OS" in
