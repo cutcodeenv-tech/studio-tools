@@ -72,17 +72,24 @@ if [[ "$_OS" == "macos" ]]; then
     fi
 fi
 
-# ── mpv (воспроизведение аудио/видео) ────────────────────────────────────────
-if ! command -v mpv &>/dev/null; then
-    printf "→ Устанавливаю mpv...\n"
-    case "$_OS" in
-        macos)   brew install mpv ;;
-        windows) scoop install mpv ;;
-        linux)   sudo apt-get install -y mpv 2>/dev/null || sudo dnf install -y mpv 2>/dev/null || printf "  Установи mpv вручную\n" ;;
-    esac
-else
-    printf "✓ mpv\n"
-fi
+# ── mpv + mediainfo + dust ────────────────────────────────────────────────────
+_brew_install() {
+    local pkg="$1"
+    if ! command -v "$pkg" &>/dev/null; then
+        printf "→ Устанавливаю %s...\n" "$pkg"
+        case "$_OS" in
+            macos)   brew install "$pkg" ;;
+            windows) scoop install "$pkg" ;;
+            linux)   sudo apt-get install -y "$pkg" 2>/dev/null || sudo dnf install -y "$pkg" 2>/dev/null || printf "  Установи %s вручную\n" "$pkg" ;;
+        esac
+    else
+        printf "✓ %s\n" "$pkg"
+    fi
+}
+
+_brew_install mpv
+_brew_install mediainfo
+_brew_install dust
 
 # ── Nerd Font ─────────────────────────────────────────────────────────────────
 _font_ok=false

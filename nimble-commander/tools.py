@@ -51,6 +51,22 @@ TOOLS = [
         "startup": 1,
         "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567806",
     },
+    {
+        "title": "mediainfo — инфо о файле",
+        "path": "/opt/homebrew/bin/mediainfo",
+        "parameters": "%p",
+        "shortcut": "\x00",
+        "startup": 1,
+        "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567807",
+    },
+    {
+        "title": "dust — размер папки",
+        "path": "/opt/homebrew/bin/dust",
+        "parameters": "-d 2 %r",
+        "shortcut": "\x00",
+        "startup": 1,
+        "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567808",
+    },
 ]
 
 
