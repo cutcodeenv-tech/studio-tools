@@ -35,8 +35,7 @@ _check_deps() {
     local _cache="${STUDIO_DIR}/.deps_ok"
     if [[ -f "$_cache" ]] && \
        (( $(date +%s) - $(_stat_mtime "$_cache") < 86400 )) && \
-       command -v yazi &>/dev/null && \
-       command -v fzf  &>/dev/null; then
+       command -v fzf &>/dev/null; then
         return 0
     fi
 
@@ -64,22 +63,6 @@ _check_deps() {
         case "$_OS" in
             macos)   brew install fzf ;;
             windows) scoop install fzf ;;
-        esac
-        _any=true
-    fi
-    if ! command -v yazi &>/dev/null; then
-        print -P "%F{cyan}  → Устанавливаю yazi...%f"
-        case "$_OS" in
-            macos)   brew install yazi ;;
-            windows) scoop install yazi ;;
-        esac
-        _any=true
-    fi
-    if ! command -v chafa &>/dev/null; then
-        print -P "%F{cyan}  → Устанавливаю chafa (предпросмотр картинок)...%f"
-        case "$_OS" in
-            macos)   brew install chafa ;;
-            windows) scoop install chafa ;;
         esac
         _any=true
     fi
@@ -220,9 +203,9 @@ cmd_new() {
     fi
 
     print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f"
-    print -P "%F{cyan}│%f Открыть в yazi? [Y/n]: \c"; read OPEN_YAZI
-    if [[ "$OPEN_YAZI" != "n" && "$OPEN_YAZI" != "N" ]]; then
-        yazi "$SSD_ROOT"
+    print -P "%F{cyan}│%f Открыть в Nimble Commander? [Y/n]: \c"; read OPEN_NC
+    if [[ "$OPEN_NC" != "n" && "$OPEN_NC" != "N" ]]; then
+        open -a "Nimble Commander" "$SSD_ROOT"
     fi
     print ""
 }
@@ -360,7 +343,7 @@ cmd_settings() {
         [[ -z "$selected" ]] && continue
 
         if [[ "$selected" == *"Шаблон папок"* ]]; then
-            yazi "$TEMPLATE_DIR"; continue
+            open -a "Nimble Commander" "$TEMPLATE_DIR"; continue
         fi
 
         local setting_key setting_val
@@ -408,7 +391,7 @@ cmd_menu() {
         *"Синхрон"*)   cmd_sync ;;
         *"Статус"*)    cmd_status ;;
         *"Настройки"*) cmd_settings ;;
-        *"Шаблон"*)    yazi "$TEMPLATE_DIR" ;;
+        *"Шаблон"*)    open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
     esac
 }
 
@@ -446,15 +429,15 @@ cmd_help() {
     print -P "
 %B%F{cyan}proj ${PROJ_VERSION}%f%b — Studio Tools
 
-  %Bproj%b                Открыть проекты в yazi
+  %Bproj%b                Открыть проекты в Nimble Commander
   %Bproj new%b            Создать новый проект
   %Bproj status%b         Статус проекта (HDD / симлинки / прокси)
   %Bproj sync%b           Синхронизировать footage с HDD
   %Bproj settings%b       Настройки (пути, шаблон папок)
-  %Bproj template%b       Редактировать шаблон папок в yazi
+  %Bproj template%b       Открыть шаблон папок в Nimble Commander
   %Bproj update%b         Обновить studio-tools
 
-%F{240}  Из yazi: gn — новый проект   gs — синхронизация   gp — статус   g, — настройки%f
+%F{240}  Из NC: Cmd+N — новый проект   Cmd+Shift+S — синхронизация   Cmd+Shift+I — статус   Cmd+P — меню%f
 "
 }
 
@@ -479,14 +462,14 @@ case "$1" in
     status)   cmd_status ;;
     sync)     cmd_sync ;;
     settings) cmd_settings ;;
-    template) yazi "$TEMPLATE_DIR" ;;
+    template) open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
     menu)     cmd_menu ;;
     update)   cmd_update ;;
     help|-h|--help) cmd_help ;;
     "")
         [[ -f "$_UPDATE_FILE" ]] && \
             print -P "%F{yellow}  ⬆  Доступно обновление → proj update%f"
-        yazi "$SSD_PROJECTS_ROOT"
+        open -a "Nimble Commander" "$SSD_PROJECTS_ROOT"
         ;;
     *)
         print -P "%F{red}Неизвестная команда: $1%f"

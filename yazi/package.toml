@@ -1,6 +1,9 @@
 [plugin]
 deps = []
 
+[[plugin.deps]]
+use = "gesellkammer/audio-preview"
+
 [[flavor.deps]]
 use = "yazi-rs/flavors:catppuccin-mocha"
 rev = "54ab389"

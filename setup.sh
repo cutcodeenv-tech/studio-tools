@@ -59,31 +59,18 @@ else
     printf "✓ fzf\n"
 fi
 
-# ── yazi ─────────────────────────────────────────────────────────────────────
-if ! command -v yazi &>/dev/null; then
-    printf "→ Устанавливаю yazi...\n"
-    case "$_OS" in
-        macos)   brew install yazi ;;
-        windows) scoop install yazi ;;
-        linux)   brew install yazi 2>/dev/null || printf "  Установи yazi вручную: https://github.com/sxyazi/yazi\n" ;;
-    esac
-else
-    printf "✓ yazi\n"
+# ── Nimble Commander ─────────────────────────────────────────────────────────
+if [[ "$_OS" == "macos" ]]; then
+    if ! osascript -e 'id of app "Nimble Commander"' &>/dev/null 2>&1 && \
+       ! ls /Applications/Nimble\ Commander.app &>/dev/null 2>&1; then
+        printf "→ Устанавливаю Nimble Commander...\n"
+        brew install --cask nimble-commander
+    else
+        printf "✓ Nimble Commander\n"
+    fi
 fi
 
-# ── chafa (предпросмотр картинок в yazi) ─────────────────────────────────────
-if ! command -v chafa &>/dev/null; then
-    printf "→ Устанавливаю chafa...\n"
-    case "$_OS" in
-        macos)   brew install chafa ;;
-        windows) scoop install chafa ;;
-        linux)   sudo apt-get install -y chafa 2>/dev/null || sudo dnf install -y chafa 2>/dev/null || printf "  Установи chafa вручную\n" ;;
-    esac
-else
-    printf "✓ chafa\n"
-fi
-
-# ── mpv (воспроизведение аудио/видео в терминале) ────────────────────────────
+# ── mpv (воспроизведение аудио/видео) ────────────────────────────────────────
 if ! command -v mpv &>/dev/null; then
     printf "→ Устанавливаю mpv...\n"
     case "$_OS" in
@@ -121,28 +108,27 @@ else
     printf "✓ JetBrains Mono Nerd Font\n"
 fi
 
-# ── yazi config (keymap + settings) ──────────────────────────────────────────
-case "$_OS" in
-    macos|linux) _YAZI_CFG="$HOME/.config/yazi" ;;
-    windows)     _YAZI_CFG="${APPDATA}/yazi/config" ;;
-esac
-
-if [[ -d "$STUDIO_DIR/yazi" ]]; then
-    mkdir -p "$_YAZI_CFG/plugins/proj.yazi"
-    mkdir -p "$_YAZI_CFG/flavors"
-    cp "$STUDIO_DIR/yazi/keymap.toml"  "$_YAZI_CFG/keymap.toml"
-    cp "$STUDIO_DIR/yazi/yazi.toml"    "$_YAZI_CFG/yazi.toml"
-    cp "$STUDIO_DIR/yazi/theme.toml"   "$_YAZI_CFG/theme.toml"
-    cp "$STUDIO_DIR/yazi/plugins/proj.yazi/main.lua" "$_YAZI_CFG/plugins/proj.yazi/main.lua"
-    cp -r "$STUDIO_DIR/yazi/flavors/catppuccin-mocha.yazi" "$_YAZI_CFG/flavors/"
-    printf "✓ yazi config + proj plugin + catppuccin тема\n"
-fi
-
-# ── ~/bin/proj ────────────────────────────────────────────────────────────────
+# ── ~/bin/proj + sf ───────────────────────────────────────────────────────────
 mkdir -p "$HOME/bin"
 cp "$STUDIO_DIR/bin/proj" "$HOME/bin/proj"
 chmod +x "$HOME/bin/proj"
 printf "✓ proj → ~/bin/\n"
+
+if [[ -f "$STUDIO_DIR/bin/sf" ]]; then
+    cp "$STUDIO_DIR/bin/sf" "$HOME/bin/sf"
+    chmod +x "$HOME/bin/sf"
+    printf "✓ sf → ~/bin/\n"
+fi
+
+# ── Nimble Commander tools ────────────────────────────────────────────────────
+if [[ "$_OS" == "macos" ]]; then
+    _NC_CONFIG="$HOME/Library/Application Support/Nimble Commander/Config/Config.json"
+    _NC_TOOLS_SRC="$STUDIO_DIR/nimble-commander/tools.py"
+    if [[ -f "$_NC_CONFIG" && -f "$_NC_TOOLS_SRC" ]]; then
+        python3 "$_NC_TOOLS_SRC" "$_NC_CONFIG" && printf "✓ Nimble Commander tools\n" \
+            || printf "⚠  Закрой Nimble Commander и повтори setup\n"
+    fi
+fi
 
 # ── PATH ──────────────────────────────────────────────────────────────────────
 _add_path() {
