@@ -129,6 +129,12 @@ if [[ -f "$STUDIO_DIR/bin/sf" ]]; then
     printf "✓ sf → ~/bin/\n"
 fi
 
+if [[ -f "$STUDIO_DIR/bin/minfo" ]]; then
+    cp "$STUDIO_DIR/bin/minfo" "$HOME/bin/minfo"
+    chmod +x "$HOME/bin/minfo"
+    printf "✓ minfo → ~/bin/\n"
+fi
+
 # ── Nimble Commander tools ────────────────────────────────────────────────────
 if [[ "$_OS" == "macos" ]]; then
     _NC_CONFIG="$HOME/Library/Application Support/Nimble Commander/Config/Config.json"

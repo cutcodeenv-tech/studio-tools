@@ -52,11 +52,11 @@ TOOLS = [
         "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567806",
     },
     {
-        "title": "mediainfo — инфо о файле",
-        "path": "/opt/homebrew/bin/mediainfo",
+        "title": "mediainfo — попап",
+        "path": os.path.expanduser("~/bin/minfo"),
         "parameters": "%p",
         "shortcut": "\x00",
-        "startup": 1,
+        "startup": 0,
         "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567807",
     },
     {

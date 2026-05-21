@@ -375,13 +375,13 @@ cmd_settings() {
     done
 }
 
-# ── proj menu ────────────────────────────────────────────────────────────────
+# ── launcher (Cmd+P из NC) ────────────────────────────────────────────────────
 cmd_menu() {
     local action
     action=$(printf \
-        "  Новый проект\n  Синхронизировать footage\n  Статус проекта\n  Настройки\n  Шаблон папок" \
+        "  Новый проект\n  Синхронизировать footage\n  Статус проекта\n  Настройки\n  Шаблон папок\n  Обновить Studio Tools" \
         | fzf \
-        --prompt="  proj > " --height=10 --layout=reverse --border=rounded \
+        --prompt="  > " --height=11 --layout=reverse --border=rounded \
         --border-label=" Studio Tools " \
         --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
         --pointer="▶" --no-multi)
@@ -392,6 +392,7 @@ cmd_menu() {
         *"Статус"*)    cmd_status ;;
         *"Настройки"*) cmd_settings ;;
         *"Шаблон"*)    open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
+        *"Обновить"*)  cmd_update ;;
     esac
 }
 

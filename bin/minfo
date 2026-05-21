@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Показывает mediainfo как нативный macOS-попап (без терминала)
+
+file="$1"
+
+if [[ -z "$file" || ! -f "$file" ]]; then
+    osascript -e 'display alert "minfo" message "Файл не найден." as warning'
+    exit 1
+fi
+
+if ! command -v mediainfo &>/dev/null; then
+    osascript -e 'display alert "minfo" message "mediainfo не установлен.\nЗапусти: brew install mediainfo" as warning'
+    exit 1
+fi
+
+_field() { mediainfo --Inform="$1;%$2%" "$file" 2>/dev/null; }
+
+# Видео
+v_format=$(_field "Video" "Format")
+v_width=$(_field "Video" "Width")
+v_height=$(_field "Video" "Height")
+v_fps=$(_field "Video" "FrameRate")
+v_bitrate=$(_field "Video" "BitRate/String")
+v_duration=$(_field "Video" "Duration/String3")
+v_profile=$(_field "Video" "Format_Profile")
+
+# Аудио
+a_format=$(_field "Audio" "Format")
+a_channels=$(_field "Audio" "Channel(s)/String")
+a_samplerate=$(_field "Audio" "SamplingRate/String")
+a_bitrate=$(_field "Audio" "BitRate/String")
+
+# Файл
+f_size=$(_field "General" "FileSize/String")
+f_container=$(_field "General" "Format")
+f_duration=$(_field "General" "Duration/String3")
+f_name=$(basename "$file")
+
+# Формируем текст
+msg=""
+
+if [[ -n "$v_format" ]]; then
+    res="${v_width}×${v_height}"
+    msg+="🎬  Видео\n"
+    msg+="   Кодек:       ${v_format}${v_profile:+ (${v_profile})}\n"
+    msg+="   Разрешение:  ${res}\n"
+    [[ -n "$v_fps" ]]     && msg+="   FPS:         ${v_fps}\n"
+    [[ -n "$v_bitrate" ]] && msg+="   Битрейт:     ${v_bitrate}\n"
+fi
+
+if [[ -n "$a_format" ]]; then
+    [[ -n "$v_format" ]] && msg+="\n"
+    msg+="🔊  Аудио\n"
+    msg+="   Кодек:       ${a_format}\n"
+    [[ -n "$a_channels" ]]   && msg+="   Каналы:      ${a_channels}\n"
+    [[ -n "$a_samplerate" ]] && msg+="   Sample rate: ${a_samplerate}\n"
+    [[ -n "$a_bitrate" ]]    && msg+="   Битрейт:     ${a_bitrate}\n"
+fi
+
+msg+="\n📁  Файл\n"
+msg+="   Контейнер:   ${f_container}\n"
+msg+="   Размер:      ${f_size}\n"
+[[ -n "$f_duration" ]] && msg+="   Длительность: ${f_duration}\n"
+
+osascript \
+    -e "set t to \"${f_name}\"" \
+    -e "set m to \"${msg}\"" \
+    -e 'display dialog m with title t buttons {"OK"} default button 1 with icon note'
