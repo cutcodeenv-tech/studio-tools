@@ -379,7 +379,7 @@ cmd_settings() {
 cmd_menu() {
     local action
     action=$(printf \
-        "  Новый проект\n  Синхронизировать footage\n  Статус проекта\n  Настройки\n  Шаблон папок\n  Обновить Studio Tools" \
+        "  Новый проект\n  Синхронизировать footage\n  Статус проекта\n  Media Log (CSV)\n  Настройки\n  Шаблон папок\n  Обновить Studio Tools" \
         | fzf \
         --prompt="  > " --height=11 --layout=reverse --border=rounded \
         --border-label=" Studio Tools " \
@@ -390,10 +390,75 @@ cmd_menu() {
         *"Новый"*)     cmd_new ;;
         *"Синхрон"*)   cmd_sync ;;
         *"Статус"*)    cmd_status ;;
+        *"Media Log"*) cmd_meta ;;
         *"Настройки"*) cmd_settings ;;
         *"Шаблон"*)    open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
         *"Обновить"*)  cmd_update ;;
     esac
+}
+
+# ── proj meta ────────────────────────────────────────────────────────────────
+cmd_meta() {
+    if ! command -v mediainfo &>/dev/null; then
+        print -P "%F{red}✗ mediainfo не установлен. Запусти: brew install mediainfo%f\n"; return 1
+    fi
+
+    local chosen
+    chosen=$(ls -1t "$SSD_PROJECTS_ROOT" 2>/dev/null | fzf \
+        --prompt="  Проект > " \
+        --height=40% \
+        --border=rounded \
+        --border-label=" Media Log " \
+        --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
+        --pointer="▶" --no-multi)
+    [[ -z "$chosen" ]] && return
+
+    local SSD_PROJECT="${SSD_PROJECTS_ROOT}/${chosen}"
+    local CSV_OUT="${SSD_PROJECT}/00_Admin/media_log.csv"
+    local count=0 skipped=0
+
+    print -P "\n%B%F{cyan}▶ Media Log:%b ${chosen}%f\n"
+
+    printf "camera,filename,shot_date,duration,codec,resolution,fps,size_mb\n" > "$CSV_OUT"
+
+    for cam_dir in "${SSD_PROJECT}/02_Sources/Video"/Cam_*/; do
+        [[ -d "$cam_dir" ]] || continue
+        local cam_name=$(basename "$cam_dir")
+        print -P "  %B%F{cyan}📁 ${cam_name}%f%b"
+
+        for f in "${cam_dir}"*(N-.); do
+            local filename=$(basename "$f")
+            local ext="${filename:l:e}"
+            [[ "$ext" == (mp4|mov|mxf|avi|r3d|braw|mts|m2ts) ]] || continue
+
+            # Дата съёмки: Encoded_Date → Tagged_Date → пусто
+            local shot_date
+            shot_date=$(mediainfo --Inform="General;%Encoded_Date%" "$f" 2>/dev/null)
+            [[ -z "$shot_date" ]] && \
+                shot_date=$(mediainfo --Inform="General;%Tagged_Date%" "$f" 2>/dev/null)
+            [[ -z "$shot_date" ]] && shot_date="unknown"
+
+            local duration codec width height fps size_bytes size_mb
+            duration=$(mediainfo --Inform="General;%Duration/String3%" "$f" 2>/dev/null)
+            codec=$(mediainfo --Inform="Video;%Format%" "$f" 2>/dev/null)
+            width=$(mediainfo --Inform="Video;%Width%" "$f" 2>/dev/null)
+            height=$(mediainfo --Inform="Video;%Height%" "$f" 2>/dev/null)
+            fps=$(mediainfo --Inform="Video;%FrameRate%" "$f" 2>/dev/null)
+            size_bytes=$(mediainfo --Inform="General;%FileSize%" "$f" 2>/dev/null)
+            size_mb=$(printf "%.1f" $(( ${size_bytes:-0} / 1048576.0 )) 2>/dev/null || echo "0")
+            local res="${width}x${height}"
+
+            printf '%s,%s,"%s",%s,%s,%s,%s,%s\n' \
+                "$cam_name" "$filename" "$shot_date" "$duration" \
+                "$codec" "$res" "$fps" "$size_mb" >> "$CSV_OUT"
+
+            print -P "    %F{green}✓%f  ${filename}  %F{240}${shot_date}%f"
+            (( count++ ))
+        done
+    done
+
+    print -P "\n%F{green}%B✅ ${count} файлов → ${CSV_OUT}%f%b\n"
+    [[ "$_OS" == "macos" ]] && open "$CSV_OUT" || true
 }
 
 # ── proj update ───────────────────────────────────────────────────────────────
@@ -482,6 +547,7 @@ case "$1" in
     new)      cmd_new ;;
     status)   cmd_status ;;
     sync)     cmd_sync ;;
+    meta)     cmd_meta ;;
     settings) cmd_settings ;;
     template) open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
     menu)     cmd_menu ;;
