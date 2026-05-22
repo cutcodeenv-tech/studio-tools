@@ -3,6 +3,25 @@ on open fileList
     set mi to "/opt/homebrew/bin/mediainfo"
     set q to quoted form of filePath
 
+    -- Папка: показываем размер и счётчики
+    try
+        do shell script "test -d " & q
+        set fName to do shell script "basename " & q
+        set sizeStr to do shell script "du -sh " & q & " 2>/dev/null | cut -f1"
+        set fileCount to do shell script "find " & q & " -maxdepth 1 -not -name '.' -type f | wc -l | tr -d ' '"
+        set dirCount to do shell script "find " & q & " -maxdepth 1 -not -name '.' -type d | wc -l | tr -d ' '"
+        -- find считает саму папку как d, вычитаем 1
+        set dirCount to (dirCount as integer) - 1
+        set nl to return
+        set tab1 to "    "
+        set msg to "FOLDER" & nl
+        set msg to msg & tab1 & my row("Size", sizeStr) & nl
+        set msg to msg & tab1 & my row("Files", fileCount as string) & nl
+        set msg to msg & tab1 & my row("Subfolders", dirCount as string) & nl
+        display dialog msg with title fName buttons {"OK"} default button 1
+        return
+    end try
+
     try
         do shell script "test -f " & mi
     on error

@@ -3,7 +3,29 @@
 
 file="$1"
 
-if [[ -z "$file" || ! -f "$file" ]]; then
+if [[ -z "$file" ]]; then
+    osascript -e 'display alert "minfo" message "Файл не найден." as warning'
+    exit 1
+fi
+
+# Папка: показываем размер и счётчики
+if [[ -d "$file" ]]; then
+    f_name=$(basename "$file")
+    d_size=$(du -sh "$file" 2>/dev/null | cut -f1)
+    d_files=$(find "$file" -maxdepth 1 -not -name '.' -type f | wc -l | tr -d ' ')
+    d_dirs=$(( $(find "$file" -maxdepth 1 -not -name '.' -type d | wc -l | tr -d ' ') - 1 ))
+    msg="📂  Папка\n"
+    msg+="   Размер:      ${d_size}\n"
+    msg+="   Файлов:      ${d_files}\n"
+    msg+="   Подпапок:    ${d_dirs}\n"
+    osascript \
+        -e "set t to \"${f_name}\"" \
+        -e "set m to \"${msg}\"" \
+        -e 'display dialog m with title t buttons {"OK"} default button 1 with icon note'
+    exit 0
+fi
+
+if [[ ! -f "$file" ]]; then
     osascript -e 'display alert "minfo" message "Файл не найден." as warning'
     exit 1
 fi
