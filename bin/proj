@@ -403,20 +403,6 @@ cmd_update() {
         cp "${STUDIO_DIR}/bin/proj" "$HOME/bin/proj" && chmod +x "$HOME/bin/proj"
         print -P "  %F{green}✓%f  bin/proj"
 
-        local _yazi_src="${STUDIO_DIR}/yazi"
-        if [[ -d "$_yazi_src" ]]; then
-            local _yazi_cfg="$HOME/.config/yazi"
-            [[ "$_OS" == "windows" ]] && _yazi_cfg="${APPDATA}/yazi/config"
-            mkdir -p "${_yazi_cfg}/plugins/proj.yazi"
-            mkdir -p "${_yazi_cfg}/flavors"
-            cp "${_yazi_src}/keymap.toml"  "${_yazi_cfg}/keymap.toml"
-            cp "${_yazi_src}/yazi.toml"    "${_yazi_cfg}/yazi.toml"
-            cp "${_yazi_src}/theme.toml"   "${_yazi_cfg}/theme.toml"
-            cp "${_yazi_src}/plugins/proj.yazi/main.lua" "${_yazi_cfg}/plugins/proj.yazi/main.lua"
-            cp -r "${_yazi_src}/flavors/catppuccin-mocha.yazi" "${_yazi_cfg}/flavors/"
-            print -P "  %F{green}✓%f  yazi config + proj plugin + тема"
-        fi
-
         rm -f "$_UPDATE_FILE"
         local ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null)
         print -P "\n%F{green}%B✅ Обновлено до ${ver}. Перезапусти proj.%f%b\n"

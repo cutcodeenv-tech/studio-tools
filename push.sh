@@ -30,12 +30,5 @@ cp "${REPO_DIR}/bin/proj" "$HOME/bin/proj"
 chmod +x "$HOME/bin/proj"
 print -P "  %F{green}✓%f  ~/bin/proj обновлён"
 
-mkdir -p "$HOME/.config/yazi/plugins/proj.yazi" "$HOME/.config/yazi/flavors"
-cp "${REPO_DIR}/yazi/keymap.toml"  "$HOME/.config/yazi/keymap.toml"
-cp "${REPO_DIR}/yazi/yazi.toml"    "$HOME/.config/yazi/yazi.toml"
-cp "${REPO_DIR}/yazi/theme.toml"   "$HOME/.config/yazi/theme.toml"
-cp "${REPO_DIR}/yazi/plugins/proj.yazi/main.lua" "$HOME/.config/yazi/plugins/proj.yazi/main.lua"
-cp -r "${REPO_DIR}/yazi/flavors/catppuccin-mocha.yazi" "$HOME/.config/yazi/flavors/"
-print -P "  %F{green}✓%f  ~/.config/yazi обновлён"
 
 print -P "\n%F{green}%B✅ Загружено на GitHub.%f%b\n"
