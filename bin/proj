@@ -431,20 +431,23 @@ cmd_meta() {
             local ext="${filename:l:e}"
             [[ "$ext" == (mp4|mov|mxf|avi|r3d|braw|mts|m2ts) ]] || continue
 
-            # Дата съёмки: Encoded_Date → Tagged_Date → пусто
-            local shot_date
-            shot_date=$(mediainfo --Inform="General;%Encoded_Date%" "$f" 2>/dev/null)
-            [[ -z "$shot_date" ]] && \
-                shot_date=$(mediainfo --Inform="General;%Tagged_Date%" "$f" 2>/dev/null)
+            # Один вызов на General, один на Video
+            local g v
+            g=$(mediainfo --Inform="General;%Encoded_Date%|%Tagged_Date%|%FileSize%|%Duration/String3%" "$f" 2>/dev/null)
+            v=$(mediainfo --Inform="Video;%Format%|%Width%|%Height%|%FrameRate%" "$f" 2>/dev/null)
+
+            local shot_date duration size_bytes size_mb codec width height fps
+            shot_date="${g%%|*}"; g="${g#*|}"
+            local tagged="${g%%|*}"; g="${g#*|}"
+            size_bytes="${g%%|*}"; g="${g#*|}"
+            duration="${g}"
+            [[ -z "$shot_date" ]] && shot_date="$tagged"
             [[ -z "$shot_date" ]] && shot_date="unknown"
 
-            local duration codec width height fps size_bytes size_mb
-            duration=$(mediainfo --Inform="General;%Duration/String3%" "$f" 2>/dev/null)
-            codec=$(mediainfo --Inform="Video;%Format%" "$f" 2>/dev/null)
-            width=$(mediainfo --Inform="Video;%Width%" "$f" 2>/dev/null)
-            height=$(mediainfo --Inform="Video;%Height%" "$f" 2>/dev/null)
-            fps=$(mediainfo --Inform="Video;%FrameRate%" "$f" 2>/dev/null)
-            size_bytes=$(mediainfo --Inform="General;%FileSize%" "$f" 2>/dev/null)
+            codec="${v%%|*}"; v="${v#*|}"
+            width="${v%%|*}"; v="${v#*|}"
+            height="${v%%|*}"; v="${v#*|}"
+            fps="${v}"
             size_mb=$(printf "%.1f" $(( ${size_bytes:-0} / 1048576.0 )) 2>/dev/null || echo "0")
             local res="${width}x${height}"
 
