@@ -135,13 +135,13 @@ if [[ "$_OS" == "macos" && -f "$STUDIO_DIR/nimble-commander/minfo.applescript" ]
         || printf "⚠  Не удалось скомпилировать minfo.app\n"
 fi
 
-# ── Nimble Commander tools ────────────────────────────────────────────────────
+# ── Nimble Commander: тема, настройки, инструменты ───────────────────────────
 if [[ "$_OS" == "macos" ]]; then
     _NC_CONFIG="$HOME/Library/Application Support/Nimble Commander/Config/Config.json"
     _NC_TOOLS_SRC="$STUDIO_DIR/nimble-commander/tools.py"
     if [[ -f "$_NC_TOOLS_SRC" ]]; then
         if [[ -f "$_NC_CONFIG" ]]; then
-            python3 "$_NC_TOOLS_SRC" "$_NC_CONFIG" && printf "✓ Nimble Commander tools\n" \
+            python3 "$_NC_TOOLS_SRC" "$_NC_CONFIG" && printf "✓ Nimble Commander (тема + настройки + инструменты)\n" \
                 || printf "⚠  Закрой Nimble Commander и повтори: bash ~/.studio-tools/setup.sh\n"
         else
             printf "⚠  Запусти Nimble Commander один раз, затем повтори:\n"

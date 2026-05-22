@@ -1,0 +1,192 @@
+{
+    "general": {
+        "theme": "cutcode Theme"
+    },
+    "filePanel": {
+        "general": {
+            "fileSizeFormat": 2
+        }
+    },
+    "themes": {
+        "themes_v1": [
+            {
+                "themeName": "cutcode Theme",
+                "themeAppearance": "dark",
+                "filePanelsColoringRules_v1": [
+                    {
+                        "name": "selected",
+                        "regular": "#D4601C",
+                        "focused": "#D4601C",
+                        "filter": { "selected": true }
+                    },
+                    {
+                        "name": "hidden",
+                        "regular": "#555555",
+                        "focused": "#888888",
+                        "filter": { "hidden": true }
+                    },
+                    {
+                        "name": "other",
+                        "regular": "#C8C8C8",
+                        "focused": "#FFFFFF"
+                    }
+                ],
+                "filePanelsGeneralDropBorderColor": "#D4601C",
+                "filePanelsGeneralOverlayColor": "#1C1C1E",
+                "filePanelsGeneralSplitterColor": "#2A2A2C",
+                "filePanelsGeneralTopSeparatorColor": "#3A3A3C80",
+                "filePanelsTabsFont": "@systemFont, 11",
+                "filePanelsTabsTextColor": "#AEAEB2",
+                "filePanelsTabsSelectedKeyWndActiveBackgroundColor": "#2C2C2E",
+                "filePanelsTabsSelectedKeyWndInactiveBackgroundColor": "#1C1C1E",
+                "filePanelsTabsSelectedNotKeyWndBackgroundColor": "#161618",
+                "filePanelsTabsRegularKeyWndHoverBackgroundColor": "#3A3A3C",
+                "filePanelsTabsRegularKeyWndRegularBackgroundColor": "#111113",
+                "filePanelsTabsRegularNotKeyWndBackgroundColor": "#111113",
+                "filePanelsTabsSeparatorColor": "#3A3A3C80",
+                "filePanelsTabsPictogramColor": "#AEAEB2",
+                "filePanelsHeaderFont": "@systemFont, 11",
+                "filePanelsHeaderTextColor": "#636366",
+                "filePanelsHeaderActiveTextColor": "#8E8E93",
+                "filePanelsHeaderActiveBackgroundColor": "#252527",
+                "filePanelsHeaderInactiveBackgroundColor": "#1F1F21",
+                "filePanelsHeaderSeparatorColor": "#3A3A3C80",
+                "filePanelsFooterFont": "@systemFont, 13",
+                "filePanelsFooterTextColor": "#636366",
+                "filePanelsFooterActiveTextColor": "#AEAEB2",
+                "filePanelsFooterSeparatorsColor": "#2A2A2C",
+                "filePanelsFooterActiveBackgroundColor": "#1F1F21",
+                "filePanelsFooterInactiveBackgroundColor": "#1A1A1C",
+                "filePanelsListFont": "@systemFont, 13",
+                "filePanelsListSecondaryColumnsOpacity": "100",
+                "filePanelsListRowVerticalPadding": "0",
+                "filePanelsListGridColor": "@clearColor",
+                "filePanelsListHeaderFont": "@systemFont, 11",
+                "filePanelsListHeaderBackgroundColor": "#252527",
+                "filePanelsListHeaderTextColor": "#636366",
+                "filePanelsListHeaderSeparatorColor": "#3A3A3C80",
+                "filePanelsListFocusedActiveRowBackgroundColor": "#D4601C",
+                "filePanelsListFocusedInactiveRowBackgroundColor": "#3A2010",
+                "filePanelsListSelectedItemBackgroundColor": "#D4601C40",
+                "filePanelsListRegularEvenRowBackgroundColor": "#1C1C1E",
+                "filePanelsListRegularOddRowBackgroundColor": "#222224",
+                "filePanelsBriefFont": "@systemFont, 13",
+                "filePanelsBriefRowVerticalPadding": "0",
+                "filePanelsBriefGridColor": "#2A2A2C",
+                "filePanelsBriefRegularEvenRowBackgroundColor": "#1C1C1E",
+                "filePanelsBriefRegularOddRowBackgroundColor": "#222224",
+                "filePanelsBriefFocusedActiveItemBackgroundColor": "#D4601C",
+                "filePanelsBriefFocusedInactiveItemBackgroundColor": "#3A2010",
+                "filePanelsBriefSelectedItemBackgroundColor": "#D4601C40",
+                "filePanelsGalleryFont": "@systemFont, 10",
+                "filePanelsGalleryBackgroundColor": "#1C1C1E",
+                "filePanelsGalleryFocusedActiveItemBackgroundColor": "#D4601C",
+                "filePanelsGalleryFocusedInactiveItemBackgroundColor": "#3A2010",
+                "filePanelsGallerySelectedItemBackgroundColor": "#D4601C30",
+                "terminalFont": "Menlo-Regular, 13",
+                "terminalOverlayColor": "@blackColor",
+                "terminalForegroundColor": "#FFFFFF",
+                "terminalBoldForegroundColor": "#FFFFFF",
+                "terminalBackgroundColor": "#1C1C1E",
+                "terminalSelectionColor": "#D4601C",
+                "terminalCursorColor": "#D4601C",
+                "terminalAnsiColor0": "#1C1C1E",
+                "terminalAnsiColor1": "#FF453A",
+                "terminalAnsiColor2": "#32D74B",
+                "terminalAnsiColor3": "#FFD60A",
+                "terminalAnsiColor4": "#0A84FF",
+                "terminalAnsiColor5": "#BF5AF2",
+                "terminalAnsiColor6": "#5AC8FA",
+                "terminalAnsiColor7": "#C8C8C8",
+                "terminalAnsiColor8": "#636366",
+                "terminalAnsiColor9": "#FF6961",
+                "terminalAnsiColorA": "#30DB5B",
+                "terminalAnsiColorB": "#FFE426",
+                "terminalAnsiColorC": "#409CFF",
+                "terminalAnsiColorD": "#DA8FFF",
+                "terminalAnsiColorE": "#70D7FF",
+                "terminalAnsiColorF": "#FFFFFF",
+                "viewerFont": "Menlo-Regular, 13",
+                "viewerOverlayColor": "@blackColor",
+                "viewerBackgroundColor": "#1C1C1E",
+                "viewerTextColor": "#C8C8C8",
+                "viewerTextSyntaxKeywordColor": "#FF7B44",
+                "viewerTextSyntaxOperatorColor": "#C8C8C8",
+                "viewerTextSyntaxIdentifierColor": "#C8C8C8",
+                "viewerTextSyntaxNumberColor": "#FFD60A",
+                "viewerTextSyntaxStringColor": "#32D74B",
+                "viewerTextSyntaxCommentColor": "#636366",
+                "viewerTextSyntaxPreprocessorColor": "#BF5AF2",
+                "viewerSelectionColor": "#D4601C"
+            }
+        ]
+    },
+    "externalTools": {
+        "tools_v1": [
+            {
+                "title": "proj — меню",
+                "path": "~/bin/proj",
+                "parameters": "menu",
+                "shortcut": "⇧^p",
+                "startup": 1,
+                "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567801"
+            },
+            {
+                "title": "proj — новый проект",
+                "path": "~/bin/proj",
+                "parameters": "new",
+                "shortcut": "⇧^n",
+                "startup": 1,
+                "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567802"
+            },
+            {
+                "title": "proj — синхронизация",
+                "path": "~/bin/proj",
+                "parameters": "sync",
+                "shortcut": "⇧^s",
+                "startup": 1,
+                "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567803"
+            },
+            {
+                "title": "proj — статус",
+                "path": "~/bin/proj",
+                "parameters": "status",
+                "shortcut": "\u0000",
+                "startup": 1,
+                "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567804"
+            },
+            {
+                "title": "proj — настройки",
+                "path": "~/bin/proj",
+                "parameters": "settings",
+                "shortcut": "⇧^a",
+                "startup": 1,
+                "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567805"
+            },
+            {
+                "title": "Воспроизвести (mpv)",
+                "path": "/opt/homebrew/bin/mpv",
+                "parameters": "--no-video --block %p",
+                "shortcut": "\u0000",
+                "startup": 1,
+                "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567806"
+            },
+            {
+                "title": "mediainfo — попап",
+                "path": "~/bin/minfo.app",
+                "parameters": "%p",
+                "shortcut": "⌘i",
+                "startup": 0,
+                "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567807"
+            },
+            {
+                "title": "dust — размер папки",
+                "path": "/opt/homebrew/bin/dust",
+                "parameters": "-d 2 %r",
+                "shortcut": "⇧⌥d",
+                "startup": 1,
+                "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567808"
+            }
+        ]
+    }
+}

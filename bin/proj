@@ -403,9 +403,30 @@ cmd_update() {
         cp "${STUDIO_DIR}/bin/proj" "$HOME/bin/proj" && chmod +x "$HOME/bin/proj"
         print -P "  %F{green}✓%f  bin/proj"
 
+        if [[ -f "${STUDIO_DIR}/bin/sf" ]]; then
+            cp "${STUDIO_DIR}/bin/sf" "$HOME/bin/sf" && chmod +x "$HOME/bin/sf"
+            print -P "  %F{green}✓%f  bin/sf"
+        fi
+
+        if [[ "$_OS" == "macos" && -f "${STUDIO_DIR}/nimble-commander/minfo.applescript" ]]; then
+            osacompile -o "$HOME/bin/minfo.app" "${STUDIO_DIR}/nimble-commander/minfo.applescript" 2>/dev/null \
+                && print -P "  %F{green}✓%f  minfo.app" \
+                || print -P "  %F{yellow}⚠%f  minfo.app не скомпилирован"
+        fi
+
+        if [[ "$_OS" == "macos" ]]; then
+            local _nc_cfg="$HOME/Library/Application Support/Nimble Commander/Config/Config.json"
+            local _nc_py="${STUDIO_DIR}/nimble-commander/tools.py"
+            if [[ -f "$_nc_py" && -f "$_nc_cfg" ]]; then
+                python3 "$_nc_py" "$_nc_cfg" \
+                    && print -P "  %F{green}✓%f  Nimble Commander (тема + настройки)" \
+                    || print -P "  %F{yellow}⚠%f  NC: закрой приложение и повтори proj update"
+            fi
+        fi
+
         rm -f "$_UPDATE_FILE"
         local ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null)
-        print -P "\n%F{green}%B✅ Обновлено до ${ver}. Перезапусти proj.%f%b\n"
+        print -P "\n%F{green}%B✅ Обновлено до ${ver}. Перезапусти NC и proj.%f%b\n"
     else
         print -P "\n%F{red}✗ Ошибка. Запусти: git -C ~/.studio-tools pull%f\n"
     fi
