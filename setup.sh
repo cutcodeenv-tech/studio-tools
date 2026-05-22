@@ -20,8 +20,20 @@ if [[ -d "$STUDIO_DIR/.git" ]]; then
     printf "→ Обновляю ~/.studio-tools...\n"
     git -C "$STUDIO_DIR" pull --ff-only && printf "✓ ~/.studio-tools\n"
 else
+    # Папка может существовать без .git (старая версия) — сохраняем config
+    if [[ -d "$STUDIO_DIR" ]]; then
+        printf "→ ~/.studio-tools существует без git — переклонирую (config сохранится)...\n"
+        [[ -f "$STUDIO_DIR/config" ]] && cp "$STUDIO_DIR/config" /tmp/_studio_config_backup
+        rm -rf "$STUDIO_DIR"
+    fi
     printf "→ Клонирую в ~/.studio-tools...\n"
     git clone "$REPO_URL" "$STUDIO_DIR" && printf "✓ ~/.studio-tools\n"
+    # Восстанавливаем config если был
+    if [[ -f /tmp/_studio_config_backup ]]; then
+        cp /tmp/_studio_config_backup "$STUDIO_DIR/config"
+        rm /tmp/_studio_config_backup
+        printf "✓ config восстановлен\n"
+    fi
 fi
 
 SCRIPT_DIR="$STUDIO_DIR"
