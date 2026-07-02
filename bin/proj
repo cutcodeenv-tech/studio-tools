@@ -107,11 +107,32 @@ _check_deps || exit 1
 PROJ_VERSION=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
 
 # ── ПРОГРЕСС-БАР ─────────────────────────────────────────────────────────────
+# rsync --inplace пишет прямо в dst (прогресс-бар видит рост файла), --partial
+# сохраняет недокачанное при обрыве — следующий sync заметит несовпадение
+# размера и дозакончит. Проверяем флаги один раз: openrsync на новых macOS
+# может их не знать — тогда откат на cp с предварительным удалением огрызка.
+typeset -g _COPY_MODE=""
+_copy_mode() {
+    if [[ -z "$_COPY_MODE" ]]; then
+        if command -v rsync &>/dev/null && rsync --partial --inplace --version &>/dev/null; then
+            _COPY_MODE="rsync"
+        else
+            _COPY_MODE="cp"
+        fi
+    fi
+    print -r -- "$_COPY_MODE"
+}
+
 copy_with_progress() {
     local src="$1" dst="$2" label="$3"
     local total=$(_stat_size "$src")
     local bar_width=30
-    cp "$src" "$dst" &
+    if [[ $(_copy_mode) == "rsync" ]]; then
+        rsync --partial --inplace "$src" "$dst" 2>/dev/null &
+    else
+        rm -f "$dst"
+        cp "$src" "$dst" &
+    fi
     local cp_pid=$!
     while kill -0 $cp_pid 2>/dev/null; do
         local current=$(_stat_size "$dst")
@@ -149,6 +170,42 @@ _config_set() {
 _config_del() {
     grep -v "^${1}=" "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
     mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"; source "$CONFIG_FILE"
+}
+
+# ── ВЫБОР ПРОЕКТА ────────────────────────────────────────────────────────────
+# С PROJECTS_PARENT_ROOT проекты лежат на глубине 2 (категория/проект),
+# без него — прямо в SSD_PROJECTS_ROOT. Имена начинаются с YYYY-MM-DD,
+# поэтому sort -r даёт свежие сверху надёжнее, чем ls -t.
+_pick_project() {
+    local label="${1:- Выберите проект }"
+    local list
+    if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
+        list=$(find "$PROJECTS_PARENT_ROOT" -mindepth 2 -maxdepth 2 -type d 2>/dev/null \
+            | sed "s|${PROJECTS_PARENT_ROOT}/||" | sort -r)
+    else
+        list=$(ls -1 "$SSD_PROJECTS_ROOT" 2>/dev/null | sort -r)
+    fi
+    [[ -z "$list" ]] && return 1
+    print -r -- "$list" | fzf \
+        --prompt="  Проект > " \
+        --height=40% \
+        --border=rounded \
+        --border-label="$label" \
+        --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
+        --pointer="▶" --no-multi
+}
+
+_project_ssd_path() {
+    if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
+        print -r -- "${PROJECTS_PARENT_ROOT}/$1"
+    else
+        print -r -- "${SSD_PROJECTS_ROOT}/$1"
+    fi
+}
+
+# На HDD проекты лежат плоско, без категорий — берём только имя проекта
+_project_hdd_path() {
+    print -r -- "${HDD_SOURCES_ROOT}/${1:t}"
 }
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -194,6 +251,9 @@ cmd_new() {
     if [[ -d "$SSD_ROOT" ]]; then
         print -P "\n%F{red}✗ Папка уже существует: ${SSD_ROOT}%f\n"; return 1
     fi
+    if [[ -d "$HDD_ROOT" ]]; then
+        print -P "\n%F{red}✗ Папка уже существует на HDD: ${HDD_ROOT}%f\n"; return 1
+    fi
 
     print -P "\n%F{yellow}Создаю структуру...%f"
 
@@ -230,17 +290,11 @@ cmd_new() {
 # ── proj status ───────────────────────────────────────────────────────────────
 cmd_status() {
     local chosen
-    chosen=$(ls -1t "$SSD_PROJECTS_ROOT" 2>/dev/null | fzf \
-        --prompt="  Проект > " \
-        --height=40% \
-        --border=rounded \
-        --border-label=" Статус проекта " \
-        --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-        --pointer="▶" --no-multi)
+    chosen=$(_pick_project " Статус проекта ")
     [[ -z "$chosen" ]] && return
 
-    local SSD_PROJECT="${SSD_PROJECTS_ROOT}/${chosen}"
-    local HDD_PROJECT="${HDD_SOURCES_ROOT}/${chosen}"
+    local SSD_PROJECT=$(_project_ssd_path "$chosen")
+    local HDD_PROJECT=$(_project_hdd_path "$chosen")
     local total_hdd=0 total_symlinks=0 total_proxies=0
 
     print -P "\n%B%F{cyan}┌─ ${chosen}%f%b"
@@ -278,33 +332,12 @@ cmd_sync() {
         print -P "%F{red}✗ HDD не смонтирован: ${HDD_SOURCES_ROOT}%f\n"; return 1
     fi
 
-    local chosen SSD_PROJECT HDD_PROJECT
-    if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
-        chosen=$(find "$PROJECTS_PARENT_ROOT" -mindepth 2 -maxdepth 2 -type d 2>/dev/null \
-            | sed "s|${PROJECTS_PARENT_ROOT}/||" \
-            | sort -r \
-            | fzf \
-            --prompt="  Проект > " \
-            --height=40% \
-            --border=rounded \
-            --border-label=" Выберите проект " \
-            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-            --pointer="▶" --no-multi)
-        [[ -z "$chosen" ]] && { print -P "%F{red}Отменено.%f\n"; return; }
-        SSD_PROJECT="${PROJECTS_PARENT_ROOT}/${chosen}"
-        HDD_PROJECT="${HDD_SOURCES_ROOT}/$(basename "$chosen")"
-    else
-        chosen=$(ls -1t "$SSD_PROJECTS_ROOT" 2>/dev/null | fzf \
-            --prompt="  Проект > " \
-            --height=40% \
-            --border=rounded \
-            --border-label=" Выберите проект " \
-            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-            --pointer="▶" --no-multi)
-        [[ -z "$chosen" ]] && { print -P "%F{red}Отменено.%f\n"; return; }
-        SSD_PROJECT="${SSD_PROJECTS_ROOT}/${chosen}"
-        HDD_PROJECT="${HDD_SOURCES_ROOT}/${chosen}"
-    fi
+    local chosen
+    chosen=$(_pick_project " Выберите проект ")
+    [[ -z "$chosen" ]] && { print -P "%F{red}Отменено.%f\n"; return; }
+
+    local SSD_PROJECT=$(_project_ssd_path "$chosen")
+    local HDD_PROJECT=$(_project_hdd_path "$chosen")
 
     if [[ ! -d "$HDD_PROJECT" ]]; then
         print -P "%F{red}✗ Проект не найден на HDD: ${HDD_PROJECT}%f\n"; return 1
@@ -334,17 +367,76 @@ cmd_sync() {
         for proxy_file in "${hdd_cam}/Proxy/"*(N-.); do
             local filename=$(basename "$proxy_file")
             local ssd_proxy="${ssd_cam}/Proxy/${filename}"
-            if [[ ! -e "$ssd_proxy" ]]; then
+            # несовпадение размера = недокачанная копия, докачиваем
+            if [[ -e "$ssd_proxy" ]] && (( $(_stat_size "$ssd_proxy") == $(_stat_size "$proxy_file") )); then
+                (( skipped++ ))
+            else
                 copy_with_progress "$proxy_file" "$ssd_proxy" "Proxy/${filename}" || true
                 (( synced++ ))
-            else
-                (( skipped++ ))
             fi
         done
     done
 
     [[ "$_OS" == "macos" ]] && afplay /System/Library/Sounds/Glass.aiff 2>/dev/null || true
     print -P "\n%F{green}%B✅ Синхронизация завершена:%b ${synced} новых, ${skipped} уже было.%f\n"
+}
+
+# ── proj open ────────────────────────────────────────────────────────────────
+cmd_open() {
+    local chosen
+    chosen=$(_pick_project " Открыть проект ")
+    [[ -z "$chosen" ]] && return
+    open -a "Nimble Commander" "$(_project_ssd_path "$chosen")"
+}
+
+# ── proj archive ─────────────────────────────────────────────────────────────
+cmd_archive() {
+    print -P "\n%B%F{cyan}Архивирование проекта%f%b\n"
+
+    if [[ ! -d "$HDD_SOURCES_ROOT" ]]; then
+        print -P "%F{red}✗ HDD не смонтирован: ${HDD_SOURCES_ROOT}%f\n"; return 1
+    fi
+
+    local chosen
+    chosen=$(_pick_project " Архивировать проект ")
+    [[ -z "$chosen" ]] && { print -P "%F{red}Отменено.%f\n"; return; }
+
+    local SSD_PROJECT=$(_project_ssd_path "$chosen")
+    local HDD_PROJECT=$(_project_hdd_path "$chosen")
+    local ssd_size=$(du -sh "$SSD_PROJECT" 2>/dev/null | cut -f1)
+
+    print -P "%B▶ Проект:%b ${chosen}  (SSD: ${ssd_size})"
+    print -P "  → ${HDD_PROJECT}"
+    print -P "  Симлинки будут удалены, папка на SSD — стёрта после переноса."
+    print -P "\n%F{yellow}Продолжить? [y/N]: %f\c"
+    read CONFIRM </dev/tty
+    if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
+        print -P "%F{red}Отменено.%f\n"; return
+    fi
+
+    # симлинки указывают на HDD — на архивной копии они не нужны
+    local links=$(find "$SSD_PROJECT" -type l | wc -l | tr -d ' ')
+    find "$SSD_PROJECT" -type l -delete
+    print -P "\n  %F{green}✓%f  Удалено симлинков: ${links}"
+
+    print -P "  %F{yellow}⬇%f  Переношу на HDD..."
+    mkdir -p "$HDD_PROJECT"
+    local _ok=false
+    if command -v rsync &>/dev/null; then
+        rsync -a "$SSD_PROJECT/" "$HDD_PROJECT/" && _ok=true
+    else
+        cp -Rp "$SSD_PROJECT/." "$HDD_PROJECT/" && _ok=true
+    fi
+
+    if [[ "$_ok" == true ]]; then
+        rm -rf "$SSD_PROJECT"
+        print -P "  %F{green}✓%f  Папка на SSD удалена"
+        [[ "$_OS" == "macos" ]] && afplay /System/Library/Sounds/Glass.aiff 2>/dev/null || true
+        print -P "\n%F{green}%B✅ Проект в архиве:%b ${HDD_PROJECT}  (освобождено ~${ssd_size})%f\n"
+    else
+        print -P "\n%F{red}✗ Ошибка переноса — папка на SSD сохранена: ${SSD_PROJECT}%f\n"
+        return 1
+    fi
 }
 
 # ── proj settings ────────────────────────────────────────────────────────────
@@ -412,17 +504,19 @@ cmd_settings() {
 cmd_menu() {
     local action
     action=$(printf \
-        "  Новый проект\n  Синхронизировать footage\n  Статус проекта\n  Media Log (CSV)\n  Настройки\n  Шаблон папок\n  Обновить Studio Tools" \
+        "  Новый проект\n  Открыть проект\n  Синхронизировать footage\n  Статус проекта\n  Архивировать проект\n  Media Log (CSV)\n  Настройки\n  Шаблон папок\n  Обновить Studio Tools" \
         | fzf \
-        --prompt="  > " --height=11 --layout=reverse --border=rounded \
+        --prompt="  > " --height=13 --layout=reverse --border=rounded \
         --border-label=" Studio Tools " \
         --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
         --pointer="▶" --no-multi)
     [[ -z "$action" ]] && return
     case "$action" in
         *"Новый"*)     cmd_new ;;
+        *"Открыть"*)   cmd_open ;;
         *"Синхрон"*)   cmd_sync ;;
         *"Статус"*)    cmd_status ;;
+        *"Архив"*)     cmd_archive ;;
         *"Media Log"*) cmd_meta ;;
         *"Настройки"*) cmd_settings ;;
         *"Шаблон"*)    open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
@@ -437,16 +531,10 @@ cmd_meta() {
     fi
 
     local chosen
-    chosen=$(ls -1t "$SSD_PROJECTS_ROOT" 2>/dev/null | fzf \
-        --prompt="  Проект > " \
-        --height=40% \
-        --border=rounded \
-        --border-label=" Media Log " \
-        --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-        --pointer="▶" --no-multi)
+    chosen=$(_pick_project " Media Log ")
     [[ -z "$chosen" ]] && return
 
-    local SSD_PROJECT="${SSD_PROJECTS_ROOT}/${chosen}"
+    local SSD_PROJECT=$(_project_ssd_path "$chosen")
     local CSV_OUT="${SSD_PROJECT}/00_Admin/media_log.csv"
     local count=0 skipped=0
 
@@ -553,8 +641,10 @@ cmd_help() {
 
   %Bproj%b                Открыть проекты в Nimble Commander
   %Bproj new%b            Создать новый проект
+  %Bproj open%b           Выбрать проект и открыть в Nimble Commander
   %Bproj status%b         Статус проекта (HDD / симлинки / прокси)
   %Bproj sync%b           Синхронизировать footage с HDD
+  %Bproj archive%b        Архивировать проект (SSD → HDD)
   %Bproj settings%b       Настройки (пути, шаблон папок)
   %Bproj template%b       Открыть шаблон папок в Nimble Commander
   %Bproj update%b         Обновить studio-tools
@@ -581,8 +671,10 @@ cmd_help() {
 
 case "$1" in
     new)      cmd_new ;;
+    open)     cmd_open ;;
     status)   cmd_status ;;
     sync)     cmd_sync ;;
+    archive)  cmd_archive ;;
     meta)     cmd_meta ;;
     settings) cmd_settings ;;
     template) open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
@@ -593,7 +685,11 @@ case "$1" in
     "")
         [[ -f "$_UPDATE_FILE" ]] && \
             print -P "%F{yellow}  ⬆  Доступно обновление → proj update%f"
-        open -a "Nimble Commander" "$SSD_PROJECTS_ROOT"
+        if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
+            open -a "Nimble Commander" "$PROJECTS_PARENT_ROOT"
+        else
+            open -a "Nimble Commander" "$SSD_PROJECTS_ROOT"
+        fi
         ;;
     *)
         print -P "%F{red}Неизвестная команда: $1%f"
