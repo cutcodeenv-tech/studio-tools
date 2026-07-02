@@ -21,6 +21,7 @@ _stat_mtime() { [[ "$_OS" == "macos" ]] && stat -f%m "$1" 2>/dev/null || stat -c
 if [[ ! -f "$CONFIG_FILE" ]]; then
     mkdir -p "$STUDIO_DIR"
     cat > "$CONFIG_FILE" <<'EOF'
+PROJECTS_PARENT_ROOT=""
 SSD_PROJECTS_ROOT="/Volumes/01_Extreme SSD/[001] Projects"
 HDD_SOURCES_ROOT="/Volumes/HDD_1"
 PREMIERE_TEMPLATE="/Volumes/01_Extreme SSD/[003] Resurces/00_TEMPLATE1.prproj"
@@ -168,10 +169,26 @@ cmd_new() {
     fi
     print -P "%B%F{cyan}└────────────────────────────────────────┘%f%b"
 
+    local TARGET_ROOT="$SSD_PROJECTS_ROOT"
+    if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
+        local chosen_dir
+        chosen_dir=$(ls -1 "$PROJECTS_PARENT_ROOT" 2>/dev/null | fzf \
+            --prompt="  Папка > " \
+            --height=40% \
+            --border=rounded \
+            --border-label=" Выберите папку проекта " \
+            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
+            --pointer="▶" --no-multi)
+        if [[ -z "$chosen_dir" ]]; then
+            print -P "%F{red}Отменено.%f\n"; return 1
+        fi
+        TARGET_ROOT="${PROJECTS_PARENT_ROOT}/${chosen_dir}"
+    fi
+
     local DATE=$(date +%Y-%m-%d)
     local SAFE_NAME="${PROJECT_NAME// /_}"
     local PROJECT_FOLDER_NAME="${DATE}_${SAFE_NAME}"
-    local SSD_ROOT="${SSD_PROJECTS_ROOT}/${PROJECT_FOLDER_NAME}"
+    local SSD_ROOT="${TARGET_ROOT}/${PROJECT_FOLDER_NAME}"
     local HDD_ROOT="${HDD_SOURCES_ROOT}/${PROJECT_FOLDER_NAME}"
 
     if [[ -d "$SSD_ROOT" ]]; then
@@ -261,18 +278,33 @@ cmd_sync() {
         print -P "%F{red}✗ HDD не смонтирован: ${HDD_SOURCES_ROOT}%f\n"; return 1
     fi
 
-    local chosen
-    chosen=$(ls -1t "$SSD_PROJECTS_ROOT" 2>/dev/null | fzf \
-        --prompt="  Проект > " \
-        --height=40% \
-        --border=rounded \
-        --border-label=" Выберите проект " \
-        --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-        --pointer="▶" --no-multi)
-    [[ -z "$chosen" ]] && { print -P "%F{red}Отменено.%f\n"; return; }
-
-    local SSD_PROJECT="${SSD_PROJECTS_ROOT}/${chosen}"
-    local HDD_PROJECT="${HDD_SOURCES_ROOT}/${chosen}"
+    local chosen SSD_PROJECT HDD_PROJECT
+    if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
+        chosen=$(find "$PROJECTS_PARENT_ROOT" -mindepth 2 -maxdepth 2 -type d 2>/dev/null \
+            | sed "s|${PROJECTS_PARENT_ROOT}/||" \
+            | sort -r \
+            | fzf \
+            --prompt="  Проект > " \
+            --height=40% \
+            --border=rounded \
+            --border-label=" Выберите проект " \
+            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
+            --pointer="▶" --no-multi)
+        [[ -z "$chosen" ]] && { print -P "%F{red}Отменено.%f\n"; return; }
+        SSD_PROJECT="${PROJECTS_PARENT_ROOT}/${chosen}"
+        HDD_PROJECT="${HDD_SOURCES_ROOT}/$(basename "$chosen")"
+    else
+        chosen=$(ls -1t "$SSD_PROJECTS_ROOT" 2>/dev/null | fzf \
+            --prompt="  Проект > " \
+            --height=40% \
+            --border=rounded \
+            --border-label=" Выберите проект " \
+            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
+            --pointer="▶" --no-multi)
+        [[ -z "$chosen" ]] && { print -P "%F{red}Отменено.%f\n"; return; }
+        SSD_PROJECT="${SSD_PROJECTS_ROOT}/${chosen}"
+        HDD_PROJECT="${HDD_SOURCES_ROOT}/${chosen}"
+    fi
 
     if [[ ! -d "$HDD_PROJECT" ]]; then
         print -P "%F{red}✗ Проект не найден на HDD: ${HDD_PROJECT}%f\n"; return 1
@@ -324,10 +356,10 @@ cmd_settings() {
 
         local result
         result=$(printf \
-            "  SSD_PROJECTS_ROOT    %s\n  HDD_SOURCES_ROOT     %s\n  PREMIERE_TEMPLATE    %s\n  Шаблон папок" \
-            "$SSD_PROJECTS_ROOT" "$HDD_SOURCES_ROOT" "$PREMIERE_TEMPLATE" \
+            "  PROJECTS_PARENT_ROOT %s\n  SSD_PROJECTS_ROOT    %s\n  HDD_SOURCES_ROOT     %s\n  PREMIERE_TEMPLATE    %s\n  Шаблон папок" \
+            "$PROJECTS_PARENT_ROOT" "$SSD_PROJECTS_ROOT" "$HDD_SOURCES_ROOT" "$PREMIERE_TEMPLATE" \
             | fzf \
-            --prompt="  > " --height=12 --layout=reverse --border=rounded \
+            --prompt="  > " --height=13 --layout=reverse --border=rounded \
             --border-label=" Настройки " \
             --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
             --pointer="▶" --no-multi --expect="ctrl-r" \
@@ -348,9 +380,10 @@ cmd_settings() {
 
         local setting_key setting_val
         case "$selected" in
-            *"SSD_PROJECTS_ROOT"*) setting_key="SSD_PROJECTS_ROOT"; setting_val="$SSD_PROJECTS_ROOT" ;;
-            *"HDD_SOURCES_ROOT"*)  setting_key="HDD_SOURCES_ROOT";  setting_val="$HDD_SOURCES_ROOT"  ;;
-            *"PREMIERE_TEMPLATE"*) setting_key="PREMIERE_TEMPLATE"; setting_val="$PREMIERE_TEMPLATE" ;;
+            *"PROJECTS_PARENT_ROOT"*) setting_key="PROJECTS_PARENT_ROOT"; setting_val="$PROJECTS_PARENT_ROOT" ;;
+            *"SSD_PROJECTS_ROOT"*)    setting_key="SSD_PROJECTS_ROOT";    setting_val="$SSD_PROJECTS_ROOT"    ;;
+            *"HDD_SOURCES_ROOT"*)     setting_key="HDD_SOURCES_ROOT";     setting_val="$HDD_SOURCES_ROOT"     ;;
+            *"PREMIERE_TEMPLATE"*)    setting_key="PREMIERE_TEMPLATE";    setting_val="$PREMIERE_TEMPLATE"    ;;
         esac
         [[ -z "$setting_key" ]] && continue
 
