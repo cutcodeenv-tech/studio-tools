@@ -20,8 +20,11 @@ jobs:
             zsh -n "$f" && echo "ok: $f"
           done
 
+      # Блочный скаляр, а не строка: "ok: setup.sh" содержит двоеточие
+      # с пробелом, и в обычном скаляре YAML принимает его за маппинг
       - name: Проверить синтаксис bash
-        run: bash -n setup.sh && echo "ok: setup.sh"
+        run: |
+          bash -n setup.sh && echo "ok: setup.sh"
 
       # bin/proj и остальные zsh-скрипты shellcheck не понимает —
       # проверяем только то, что действительно на bash
@@ -32,6 +35,17 @@ jobs:
         run: |
           python3 -c "import json; json.load(open('nimble-commander/nc-settings.json')); print('ok: nc-settings.json')"
           python3 -m py_compile nimble-commander/tools.py && echo "ok: tools.py"
+
+      # Себя эта проверка не спасёт (битый workflow не запустится вовсе),
+      # но поймает ошибку в любом файле, добавленном рядом
+      - name: Проверить YAML workflow-файлов
+        run: |
+          ruby -ryaml -e '
+            Dir[".github/workflows/*.yml"].each do |f|
+              YAML.load_file(f)
+              puts "ok: #{f}"
+            end
+          '
 
   test:
     # Тесты гоняем и на Linux, и на macOS: пути, rsync и stat различаются
