@@ -1,89 +1,176 @@
 # Studio Tools
 
-Терминальные инструменты для управления видеопроектами: создание структуры папок, синхронизация footage с HDD.
+Терминальные инструменты для управления видеопроектами: создание структуры папок,
+синхронизация footage с HDD, архивация и медиа-лог. Работает в связке с
+[Nimble Commander](https://magnumbytes.com) — команды повешены на горячие клавиши.
+
+Модель работы: **оригиналы живут на HDD, на SSD лежит рабочая копия**. Исходники
+подключаются симлинками (место на SSD не тратится), а прокси копируются реально,
+чтобы монтаж не зависел от подключённого диска.
 
 ## Установка
 
-Одна команда — клонирует в `~/.studio-tools` и настраивает всё автоматически:
+macOS, Linux и Windows (Git Bash) — одна и та же команда:
 
-**macOS / Linux:**
-```zsh
-git clone https://github.com/cutcodeenv-tech/studio-tools.git ~/.studio-tools && bash ~/.studio-tools/setup.sh && source ~/.zshrc
-```
-
-**Windows (Git Bash):**
 ```bash
 git clone https://github.com/cutcodeenv-tech/studio-tools.git ~/.studio-tools && bash ~/.studio-tools/setup.sh
 ```
 
-`setup.sh` автоматически определяет систему и устанавливает все зависимости:
-- macOS: Homebrew → fzf, superfile, JetBrains Mono Nerd Font
-- Windows: Scoop → zsh, fzf, superfile, JetBrainsMono-NF
+`setup.sh` определяет систему и ставит зависимости:
 
-После установки выбери **JetBrainsMono Nerd Font** в настройках терминала для отображения иконок.
+| | macOS | Windows |
+|---|---|---|
+| менеджер пакетов | Homebrew | Scoop |
+| зависимости | fzf, mpv, mediainfo, dust, Nimble Commander | zsh, fzf, mpv, mediainfo, dust |
+| шрифт | JetBrains Mono Nerd Font | JetBrainsMono-NF |
 
-## Использование
+После установки выбери **JetBrainsMono Nerd Font** в настройках терминала —
+иначе иконки в меню отрисуются квадратами.
 
-```zsh
-proj
+`~/bin/proj` — симлинк в `~/.studio-tools/bin/proj`, поэтому `git pull` в
+репозитории сразу обновляет команду.
+
+## Команды
+
+```
+proj                Открыть папку проектов в Nimble Commander
+proj new            Создать новый проект
+proj open           Выбрать проект и открыть в Nimble Commander
+proj status         Статус проекта (исходники / симлинки / прокси)
+proj sync           Синхронизировать footage с HDD
+proj archive        Архивировать проект (SSD → HDD)
+proj meta           Media Log: CSV с метаданными клипов
+proj menu           Меню со всеми действиями
+proj settings       Настройки (пути, шаблон папок)
+proj template       Открыть шаблон папок
+proj update         Обновить Studio Tools
 ```
 
-При запуске открывается меню:
+Без аргументов и через `proj menu` открывается меню:
 
 ```
-╭─ proj ────────────────────────╮
+╭─ Studio Tools ────────────────╮
 │ ▶ Новый проект                │
+│   Открыть проект              │
 │   Синхронизировать footage    │
+│   Статус проекта              │
+│   Архивировать проект         │
+│   Media Log (CSV)             │
+│   Настройки                   │
+│   Шаблон папок                │
+│   Обновить Studio Tools       │
 ╰───────────────────────────────╯
 ```
 
-### Новый проект
+### Горячие клавиши в Nimble Commander
 
-Создаёт структуру папок на SSD и HDD:
+| Клавиши | Действие |
+|---|---|
+| `Ctrl+Shift+P` | Меню |
+| `Ctrl+Shift+N` | Новый проект |
+| `Ctrl+Shift+S` | Синхронизация |
+| `Ctrl+Shift+I` | Статус проекта |
+| `Ctrl+Shift+A` | Настройки |
+| `Cmd+I` | mediainfo-попап для файла или папки |
+| `Opt+Shift+D` | Размер папки (dust) |
+
+## Новый проект
+
+Спрашивает название и количество камер, затем создаёт структуру на SSD
+(и папки камер на HDD, если он смонтирован):
 
 ```
 SSD/[001] Projects/2026-05-19_Project_Name/
 ├── 00_Admin/
-├── 01_Project_Files/         (Premiere, DaVinci, AE, PS, AI, Audition)
+├── 01_Project_Files/     Premiere, DaVinci, AfterEffects, Photoshop,
+│                         Illustrator, Audition
 ├── 02_Sources/
-│   └── Video/
-│       └── Cam_a/
-│           └── Proxy/        ← реальная папка на SSD
-├── 03_Proxies/
-├── 04_Exports/
+│   ├── Video/
+│   │   └── Cam_a/
+│   │       └── Proxy/    ← реальные файлы на SSD
+│   ├── Audio/            Music, SFX, VoiceOver
+│   └── Graphics/         Images, Vectors
+├── 03_Exports/
+│   ├── 01_Drafts/
+│   ├── 02_Handoff/       For_CGI, For_Color, For_Sound
+│   ├── 03_Master/
+│   └── 04_Socials/
 └── 99_Archive/
 
-HDD/Project_Name/
-└── 02_Sources/Video/Cam_a/   ← оригиналы footage
+HDD/2026-05-19_Project_Name/
+└── 02_Sources/Video/Cam_a/    ← оригиналы footage
 ```
 
-### Синхронизировать footage
+Структуру можно менять — папки берутся один в один из `template/`
+(`proj template` открывает её).
 
-После того как footage скопирован на HDD — создаёт симлинки в SSD-папке проекта.
-Файлы в `Proxy/` копируются на SSD как оригиналы.
+## Синхронизация
 
-## Конфиг
+После копирования footage на HDD `proj sync`:
 
-Пути настраиваются в начале `bin/proj`:
+- создаёт симлинки на оригиналы в папке проекта на SSD;
+- копирует `Proxy/` на SSD как настоящие файлы, с прогресс-баром;
+- при обрыве дозаписывает недокачанное с того же места (`rsync --append-verify`),
+  повторный запуск безопасен и идемпотентен.
+
+Если часть файлов не скопировалась, команда сообщит об этом и вернёт ненулевой
+код — счётчик «новых» не завышается.
+
+## Архивация
+
+`proj archive` переносит проект целиком с SSD на HDD и освобождает SSD:
+
+1. удаляются симлинки, ведущие в архивную папку на HDD (оригинал уже там);
+   симлинки, указывающие наружу, **сохраняются** — о них выводится
+   предупреждение, чтобы ссылка не пропала молча;
+2. содержимое переносится на HDD через `rsync -a`;
+3. перенос проверяется вторым проходом, и только если расхождений нет,
+   папка на SSD удаляется.
+
+## Media Log
+
+`proj meta` собирает `00_Admin/media_log.csv` по клипам проекта: камера, имя
+файла, дата съёмки, длительность, кодек, разрешение, fps, размер. Файлы
+обрабатываются параллельно по числу ядер. Поля экранируются по RFC 4180, так что
+запятая в имени файла или названии кодека не ломает колонки.
+
+Распознаются `mp4`, `mov`, `mxf`, `avi`, `r3d`, `braw`, `mts`, `m2ts`.
+
+## Настройки
+
+`proj settings` — редактор путей поверх `~/.studio-tools/config`:
+
+| Ключ | Назначение |
+|---|---|
+| `PROJECTS_PARENT_ROOT` | Родительская папка с категориями. Если задана, проекты ищутся на глубине 2 (`Категория/Проект`) |
+| `SSD_PROJECTS_ROOT` | Папка проектов на SSD (когда родительская не задана) |
+| `HDD_SOURCES_ROOT` | Корень с исходниками на HDD |
+| `PREMIERE_TEMPLATE` | `.prproj`, который копируется в новый проект |
+
+`Enter` — изменить, `Del` — сбросить, `Esc` — назад.
+
+Конфиг читается построчно и **не исполняется как код**, поэтому спецсимволы
+в путях безопасны.
+
+## Разработка
 
 ```zsh
-SSD_PROJECTS_ROOT="/Volumes/01_Extreme SSD/[001] Projects"
-HDD_SOURCES_ROOT="/Volumes/HDD_1"
-PREMIERE_TEMPLATE="/Volumes/01_Extreme SSD/[003] Resurces/00_TEMPLATE1.prproj"
+zsh tests/run.zsh
 ```
+
+Тесты работают в песочнице (`STUDIO_TOOLS_HOME`) и не трогают настоящую
+установку. Каждый кейс воспроизводит конкретный баг, который уже был в коде.
+CI прогоняет их на Linux и macOS плюс проверяет синтаксис.
+
+`push.sh` коммитит, пушит и раскладывает файлы локально. Вся раскладка живёт
+в `bin/deploy` — единственном месте, которое пишет в `~/bin` и настройки NC.
 
 ## Удаление
 
-```zsh
-~/.studio-tools/uninstall.sh
+```bash
+zsh ~/.studio-tools/uninstall.sh
 ```
 
-Удаляет `~/bin/proj`, `~/.studio-tools` и убирает PATH из `~/.zshrc`.
-
-## Обновление
-
-```zsh
-./push.sh
-```
-
-Коммитит изменения, пушит на GitHub и обновляет локальную команду `proj`.
+Удаляет `~/bin/proj`, `~/bin/minfo.app`, `~/.studio-tools`, убирает строку PATH
+из rc-файлов и вычищает свою тему и инструменты из настроек Nimble Commander
+(остальные настройки NC не трогаются).

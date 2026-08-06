@@ -1,7 +1,9 @@
 #!/usr/bin/env zsh
 
 # ── КОНФИГ ──────────────────────────────────────────────────────────────────
-STUDIO_DIR="$HOME/.studio-tools"
+# STUDIO_TOOLS_HOME переопределяет расположение — нужно тестам, чтобы
+# гонять команды на временных SSD/HDD, не трогая настоящую установку.
+STUDIO_DIR="${STUDIO_TOOLS_HOME:-$HOME/.studio-tools}"
 CONFIG_FILE="${STUDIO_DIR}/config"
 TEMPLATE_DIR="${STUDIO_DIR}/template"
 _UPDATE_FILE="${STUDIO_DIR}/.update_available"
@@ -15,20 +17,45 @@ case "$OSTYPE" in
     *)             _OS="unknown" ;;
 esac
 
-_stat_size()  { [[ "$_OS" == "macos" ]] && stat -f%z "$1" 2>/dev/null || stat -c%s "$1" 2>/dev/null || echo 1; }
-_stat_mtime() { [[ "$_OS" == "macos" ]] && stat -f%m "$1" 2>/dev/null || stat -c%Y "$1" 2>/dev/null || echo 0; }
+# zstat — встроенный в zsh, не форкает процесс (важно для прогресс-бара,
+# который опрашивает размер файла несколько раз в секунду)
+zmodload -F zsh/stat b:zstat 2>/dev/null
+
+# 0 для несуществующего файла: вызывающий сам решает, что это значит
+_stat_size()  { local -a s; zstat -A s +size   "$1" 2>/dev/null && print -r -- "$s[1]" || print -r -- 0; }
+_stat_mtime() { local -a s; zstat -A s +mtime  "$1" 2>/dev/null && print -r -- "$s[1]" || print -r -- 0; }
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
     mkdir -p "$STUDIO_DIR"
     cat > "$CONFIG_FILE" <<'EOF'
-PROJECTS_PARENT_ROOT=""
-SSD_PROJECTS_ROOT="/Volumes/01_Extreme SSD/[001] Projects"
-HDD_SOURCES_ROOT="/Volumes/HDD_1"
-PREMIERE_TEMPLATE="/Volumes/01_Extreme SSD/[003] Resurces/00_TEMPLATE1.prproj"
+PROJECTS_PARENT_ROOT=
+SSD_PROJECTS_ROOT=/Volumes/01_Extreme SSD/[001] Projects
+HDD_SOURCES_ROOT=/Volumes/HDD_1
+PREMIERE_TEMPLATE=/Volumes/01_Extreme SSD/[003] Resurces/00_TEMPLATE1.prproj
 EOF
 fi
 
-source "$CONFIG_FILE"
+# Конфиг НЕ исполняется как код: раньше здесь был `source`, и путь,
+# введённый в `proj settings`, мог содержать $(...) — команда выполнилась бы
+# при следующем запуске. Теперь парсим построчно и принимаем только
+# известные ключи. Кавычки вокруг значения снимаются для совместимости
+# со старым форматом конфига.
+typeset -g PROJECTS_PARENT_ROOT SSD_PROJECTS_ROOT HDD_SOURCES_ROOT PREMIERE_TEMPLATE
+_config_load() {
+    PROJECTS_PARENT_ROOT="" SSD_PROJECTS_ROOT="" HDD_SOURCES_ROOT="" PREMIERE_TEMPLATE=""
+    local line key val
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" || "$line" == '#'* || "$line" != *=* ]] && continue
+        key="${line%%=*}"
+        val="${line#*=}"
+        val="${val#\"}"; val="${val%\"}"
+        case "$key" in
+            PROJECTS_PARENT_ROOT|SSD_PROJECTS_ROOT|HDD_SOURCES_ROOT|PREMIERE_TEMPLATE)
+                typeset -g "$key"="$val" ;;
+        esac
+    done < "$CONFIG_FILE"
+}
+_config_load
 
 [[ ! -d "$TEMPLATE_DIR" ]] && mkdir -p "$TEMPLATE_DIR"
 
@@ -59,34 +86,30 @@ _check_deps() {
 
     local _any=false
 
-    if ! command -v fzf &>/dev/null; then
-        print -P "%F{cyan}  → Устанавливаю fzf...%f"
+    # Тот же список, что ставит setup.sh — раньше они разъезжались, и
+    # `proj meta` падал на машине, обновлённой через `proj update`.
+    local _pkg
+    for _pkg in fzf mpv mediainfo dust; do
+        command -v "$_pkg" &>/dev/null && continue
+        print -P "%F{cyan}  → Устанавливаю ${_pkg}...%f"
         case "$_OS" in
-            macos)   brew install fzf ;;
-            windows) scoop install fzf ;;
+            macos)   brew install "$_pkg" ;;
+            windows) scoop install "$_pkg" ;;
         esac
         _any=true
-    fi
-    if ! command -v mpv &>/dev/null; then
-        print -P "%F{cyan}  → Устанавливаю mpv (аудио/видео)...%f"
-        case "$_OS" in
-            macos)   brew install mpv ;;
-            windows) scoop install mpv ;;
-        esac
-        _any=true
-    fi
+    done
 
-    local _font_ok=false
+    # Глоб вместо `ls | grep`: имена файлов шрифтов содержат пробелы
+    local _font_ok=false _d
+    local -a _font_dirs _hits
     case "$_OS" in
-        macos)
-            for _d in "$HOME/Library/Fonts" "/Library/Fonts"; do
-                ls "$_d" 2>/dev/null | grep -qi "JetBrainsMono.*Nerd" && { _font_ok=true; break; }
-            done
-            ;;
-        windows)
-            ls "$HOME/AppData/Local/Microsoft/Windows/Fonts" 2>/dev/null | grep -qi "JetBrainsMono" && _font_ok=true
-            ;;
+        macos)   _font_dirs=( "$HOME/Library/Fonts" "/Library/Fonts" ) ;;
+        windows) _font_dirs=( "$HOME/AppData/Local/Microsoft/Windows/Fonts" ) ;;
     esac
+    for _d in "${_font_dirs[@]}"; do
+        _hits=( "$_d"/JetBrainsMono*(N) )
+        (( ${#_hits} )) && { _font_ok=true; break }
+    done
     if [[ "$_font_ok" == false ]]; then
         print -P "%F{cyan}  → Устанавливаю JetBrains Mono Nerd Font...%f"
         case "$_OS" in
@@ -101,20 +124,22 @@ _check_deps() {
     touch "$_cache"
     return 0
 }
-_check_deps || exit 1
+[[ -z "$PROJ_SOURCE_ONLY" ]] && { _check_deps || exit 1; }
 # ────────────────────────────────────────────────────────────────────────────
 
 PROJ_VERSION=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
 
 # ── ПРОГРЕСС-БАР ─────────────────────────────────────────────────────────────
-# rsync --inplace пишет прямо в dst (прогресс-бар видит рост файла), --partial
-# сохраняет недокачанное при обрыве — следующий sync заметит несовпадение
-# размера и дозакончит. Проверяем флаги один раз: openrsync на новых macOS
-# может их не знать — тогда откат на cp с предварительным удалением огрызка.
+# --inplace пишет прямо в dst, поэтому прогресс-бар видит рост файла.
+# --append-verify нужен именно для докачки: при локальном копировании rsync
+# по умолчанию работает в режиме --whole-file, дельта-алгоритм выключен,
+# и одни только --partial --inplace перекачивали бы файл целиком.
+# Проверяем флаги один раз: openrsync на новых macOS может их не знать —
+# тогда откат на cp с предварительным удалением огрызка.
 typeset -g _COPY_MODE=""
 _copy_mode() {
     if [[ -z "$_COPY_MODE" ]]; then
-        if command -v rsync &>/dev/null && rsync --partial --inplace --version &>/dev/null; then
+        if command -v rsync &>/dev/null && rsync --append-verify --inplace --version &>/dev/null; then
             _COPY_MODE="rsync"
         else
             _COPY_MODE="cp"
@@ -127,65 +152,90 @@ copy_with_progress() {
     local src="$1" dst="$2" label="$3"
     local total=$(_stat_size "$src")
     local bar_width=30
+    # 0-байтный исходник ронял скрипт делением на ноль
+    (( total > 0 )) || total=1
+
     if [[ $(_copy_mode) == "rsync" ]]; then
-        rsync --partial --inplace "$src" "$dst" 2>/dev/null &
+        # --append-verify дозаписывает только хвост, но лишь если dst короче
+        # исходника; иначе он бы принял чужой файл за валидный префикс
+        if [[ -e "$dst" ]] && (( $(_stat_size "$dst") > total )); then
+            rm -f "$dst"
+        fi
+        rsync --append-verify --inplace "$src" "$dst" 2>/dev/null &
     else
         rm -f "$dst"
         cp "$src" "$dst" &
     fi
     local cp_pid=$!
+
+    local bar_full="" bar_empty=""
+    local j
+    for (( j=0; j<bar_width; j++ )); do bar_full+="█"; bar_empty+="░"; done
+
     while kill -0 $cp_pid 2>/dev/null; do
         local current=$(_stat_size "$dst")
         local pct=$(( current * 100 / total ))
+        (( pct > 100 )) && pct=100
         local filled=$(( pct * bar_width / 100 ))
-        local bar=""
-        for (( j=0; j<bar_width; j++ )); do
-            (( j < filled )) && bar+="█" || bar+="░"
-        done
-        printf "\r  \033[33m⬇\033[0m  \033[90m[%s]\033[0m %3d%%  %s" "$bar" "$pct" "$label"
+        printf "\r  \033[33m⬇\033[0m  \033[90m[%s%s]\033[0m %3d%%  %s" \
+            "${bar_full:0:$filled}" "${bar_empty:0:$(( bar_width - filled ))}" "$pct" "$label"
         sleep 0.15
     done
     wait $cp_pid; local _rc=$?
-    local full_bar=$(printf '█%.0s' {1..$bar_width})
     (( _rc == 0 )) \
-        && printf "\r  \033[32m✓\033[0m  \033[90m[%s]\033[0m 100%%  %s\n" "$full_bar" "$label" \
+        && printf "\r  \033[32m✓\033[0m  \033[90m[%s]\033[0m 100%%  %s\n" "$bar_full" "$label" \
         || printf "\r  \033[31m✗\033[0m  копирование не удалось: %s\n" "$label"
     return $_rc
 }
 
 # ── ЗАПИСЬ В КОНФИГ ──────────────────────────────────────────────────────────
 _config_set() {
-    local key="$1" val="$2" tmpfile=$(mktemp) found=false
-    while IFS= read -r line; do
+    local key="$1" val="$2" line found=false
+    local tmpfile=$(mktemp) || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" == "${key}="* ]]; then
-            echo "${key}=\"${val}\"" >> "$tmpfile"; found=true
+            print -r -- "${key}=${val}" >> "$tmpfile"; found=true
         else
-            echo "$line" >> "$tmpfile"
+            print -r -- "$line" >> "$tmpfile"
         fi
     done < "$CONFIG_FILE"
-    [[ "$found" == false ]] && echo "${key}=\"${val}\"" >> "$tmpfile"
-    mv "$tmpfile" "$CONFIG_FILE"; source "$CONFIG_FILE"
+    [[ "$found" == false ]] && print -r -- "${key}=${val}" >> "$tmpfile"
+    mv "$tmpfile" "$CONFIG_FILE" && _config_load
 }
 
 _config_del() {
-    grep -v "^${1}=" "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
-    mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"; source "$CONFIG_FILE"
+    local tmpfile=$(mktemp) || return 1
+    grep -v "^${1}=" "$CONFIG_FILE" > "$tmpfile"
+    mv "$tmpfile" "$CONFIG_FILE" && _config_load
 }
 
 # ── ВЫБОР ПРОЕКТА ────────────────────────────────────────────────────────────
 # С PROJECTS_PARENT_ROOT проекты лежат на глубине 2 (категория/проект),
 # без него — прямо в SSD_PROJECTS_ROOT. Имена начинаются с YYYY-MM-DD,
 # поэтому sort -r даёт свежие сверху надёжнее, чем ls -t.
+_pick_project_list() {
+    local list
+    if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
+        # Раньше префикс срезался через sed, но в пути по умолчанию есть
+        # "[001] Projects", а в BRE [001] — символьный класс, и срезалась
+        # не та подстрока. Берём два последних компонента модификаторами.
+        local -a dirs rel
+        local d
+        dirs=( "$PROJECTS_PARENT_ROOT"/*/*(N/) )
+        (( ${#dirs} )) || return 1
+        for d in "${dirs[@]}"; do rel+=( "${d:h:t}/${d:t}" ); done
+        list=$(print -rl -- "${rel[@]}" | sort -r)
+    else
+        list=$(print -rl -- "$SSD_PROJECTS_ROOT"/*(N/:t) | sort -r)
+    fi
+    [[ -z "$list" ]] && return 1
+    print -r -- "$list"
+}
+
 _pick_project() {
     local label="${1:- Выберите проект }"
     local list
-    if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
-        list=$(find "$PROJECTS_PARENT_ROOT" -mindepth 2 -maxdepth 2 -type d 2>/dev/null \
-            | sed "s|${PROJECTS_PARENT_ROOT}/||" | sort -r)
-    else
-        list=$(ls -1 "$SSD_PROJECTS_ROOT" 2>/dev/null | sort -r)
-    fi
-    [[ -z "$list" ]] && return 1
+    list=$(_pick_project_list) || return 1
     print -r -- "$list" | fzf \
         --prompt="  Проект > " \
         --height=40% \
@@ -267,17 +317,21 @@ cmd_new() {
         print -P "  %F{yellow}⚠%f  Шаблон Premiere не найден"
     fi
 
+    # Папки камер на SSD создаём всегда: раньше при отмонтированном HDD
+    # проект оставался вообще без Cam_*, и `proj status`/`proj meta` на нём
+    # падали на глобе без совпадений.
+    local _hdd_ok=true
     if [[ ! -d "$HDD_SOURCES_ROOT" ]]; then
-        print -P "  %F{yellow}⚠%f  HDD не смонтирован, камеры пропущены"
-    else
-        local ALPHABET=( {a..z} )
-        for (( i=1; i<=CAM_COUNT; i++ )); do
-            local CAM="Cam_${ALPHABET[$i]}"
-            mkdir -p "${SSD_ROOT}/02_Sources/Video/${CAM}/Proxy"
-            mkdir -p "${HDD_ROOT}/02_Sources/Video/${CAM}"
-            print -P "  %F{green}✓%f  ${CAM}"
-        done
+        _hdd_ok=false
+        print -P "  %F{yellow}⚠%f  HDD не смонтирован — папки камер только на SSD"
     fi
+    local ALPHABET=( {a..z} )
+    for (( i=1; i<=CAM_COUNT; i++ )); do
+        local CAM="Cam_${ALPHABET[$i]}"
+        mkdir -p "${SSD_ROOT}/02_Sources/Video/${CAM}/Proxy"
+        [[ "$_hdd_ok" == true ]] && mkdir -p "${HDD_ROOT}/02_Sources/Video/${CAM}"
+        print -P "  %F{green}✓%f  ${CAM}"
+    done
 
     print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f"
     print -P "%F{cyan}│%f Открыть в Nimble Commander? [Y/n]: \c"; read OPEN_NC
@@ -292,21 +346,32 @@ cmd_status() {
     local chosen
     chosen=$(_pick_project " Статус проекта ")
     [[ -z "$chosen" ]] && return
+    cmd_status_for "$(_project_ssd_path "$chosen")" "$(_project_hdd_path "$chosen")" "$chosen"
+}
 
-    local SSD_PROJECT=$(_project_ssd_path "$chosen")
-    local HDD_PROJECT=$(_project_hdd_path "$chosen")
+# Отделено от выбора через fzf, чтобы логику можно было прогнать в тестах
+cmd_status_for() {
+    local SSD_PROJECT="$1" HDD_PROJECT="$2" chosen="${3:-${1:t}}"
     local total_hdd=0 total_symlinks=0 total_proxies=0
 
     print -P "\n%B%F{cyan}┌─ ${chosen}%f%b"
 
-    for ssd_cam in "${SSD_PROJECT}/02_Sources/Video"/Cam_*/; do
-        [[ -d "$ssd_cam" ]] || continue
-        local cam_name=$(basename "$ssd_cam")
+    local -a cams
+    cams=( "${SSD_PROJECT}/02_Sources/Video"/Cam_*(N/) )
+    if (( ${#cams} == 0 )); then
+        print -P "%B%F{cyan}│%f%b  %F{240}камер нет%f"
+    fi
+
+    local ssd_cam
+    for ssd_cam in "${cams[@]}"; do
+        local cam_name="${ssd_cam:t}"
         local hdd_cam="${HDD_PROJECT}/02_Sources/Video/${cam_name}"
-        local ssd_links=$(find "$ssd_cam" -maxdepth 1 -type l | wc -l | tr -d ' ')
-        local hdd_files=0
-        [[ -d "$hdd_cam" ]] && hdd_files=$(find "$hdd_cam" -maxdepth 1 -type f | wc -l | tr -d ' ')
-        local proxy_count=$(find "${ssd_cam}Proxy" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
+        # Глобы вместо трёх find+wc+tr: считаем в самом zsh, без форков
+        local -a l_links l_hdd l_proxy
+        l_links=( "$ssd_cam"/*(N@) )
+        l_hdd=(   "$hdd_cam"/*(N.) )
+        l_proxy=( "$ssd_cam"/Proxy/*(N.) )
+        local ssd_links=${#l_links} hdd_files=${#l_hdd} proxy_count=${#l_proxy}
         (( total_hdd += hdd_files ))
         (( total_symlinks += ssd_links ))
         (( total_proxies += proxy_count ))
@@ -336,24 +401,29 @@ cmd_sync() {
     chosen=$(_pick_project " Выберите проект ")
     [[ -z "$chosen" ]] && { print -P "%F{red}Отменено.%f\n"; return; }
 
-    local SSD_PROJECT=$(_project_ssd_path "$chosen")
-    local HDD_PROJECT=$(_project_hdd_path "$chosen")
+    cmd_sync_for "$(_project_ssd_path "$chosen")" "$(_project_hdd_path "$chosen")" "$chosen"
+}
+
+cmd_sync_for() {
+    local SSD_PROJECT="$1" HDD_PROJECT="$2" chosen="${3:-${1:t}}"
 
     if [[ ! -d "$HDD_PROJECT" ]]; then
         print -P "%F{red}✗ Проект не найден на HDD: ${HDD_PROJECT}%f\n"; return 1
     fi
 
     print -P "%B▶ Проект:%b ${chosen}\n"
-    local synced=0 skipped=0
+    local synced=0 skipped=0 failed=0
+    local hdd_cam
 
     for hdd_cam in "${HDD_PROJECT}/02_Sources/Video"/Cam_*(N/); do
-        local cam_name=$(basename "$hdd_cam")
+        local cam_name="${hdd_cam:t}"
         local ssd_cam="${SSD_PROJECT}/02_Sources/Video/${cam_name}"
         mkdir -p "${ssd_cam}/Proxy"
         print -P "%B%F{cyan}📁 ${cam_name}%f%b"
 
+        local hdd_file proxy_file
         for hdd_file in "${hdd_cam}/"*(N-.); do
-            local filename=$(basename "$hdd_file")
+            local filename="${hdd_file:t}"
             local ssd_link="${ssd_cam}/${filename}"
             if [[ ! -e "$ssd_link" && ! -L "$ssd_link" ]]; then
                 ln -s "$hdd_file" "$ssd_link"
@@ -365,19 +435,26 @@ cmd_sync() {
         done
 
         for proxy_file in "${hdd_cam}/Proxy/"*(N-.); do
-            local filename=$(basename "$proxy_file")
+            local filename="${proxy_file:t}"
             local ssd_proxy="${ssd_cam}/Proxy/${filename}"
             # несовпадение размера = недокачанная копия, докачиваем
             if [[ -e "$ssd_proxy" ]] && (( $(_stat_size "$ssd_proxy") == $(_stat_size "$proxy_file") )); then
                 (( skipped++ ))
-            else
-                copy_with_progress "$proxy_file" "$ssd_proxy" "Proxy/${filename}" || true
+            elif copy_with_progress "$proxy_file" "$ssd_proxy" "Proxy/${filename}"; then
                 (( synced++ ))
+            else
+                # раньше счётчик рос и после сбоя — сводка завышала успех
+                (( failed++ ))
             fi
         done
     done
 
     [[ "$_OS" == "macos" ]] && afplay /System/Library/Sounds/Glass.aiff 2>/dev/null || true
+    if (( failed > 0 )); then
+        print -P "\n%F{yellow}%B⚠ Синхронизация завершена с ошибками:%b ${synced} новых, ${skipped} уже было, %F{red}${failed} не удалось%f.%f"
+        print -P "%F{240}  Повторный запуск sync дозакачает недокопированное.%f\n"
+        return 1
+    fi
     print -P "\n%F{green}%B✅ Синхронизация завершена:%b ${synced} новых, ${skipped} уже было.%f\n"
 }
 
@@ -414,35 +491,79 @@ cmd_archive() {
         print -P "%F{red}Отменено.%f\n"; return
     fi
 
-    # симлинки указывают на HDD — на архивной копии они не нужны
-    local links=$(find "$SSD_PROJECT" -type l | wc -l | tr -d ' ')
-    find "$SSD_PROJECT" -type l -delete
-    print -P "\n  %F{green}✓%f  Удалено симлинков: ${links}"
+    cmd_archive_for "$SSD_PROJECT" "$HDD_PROJECT"
+}
+
+# Подтверждение остаётся в cmd_archive: здесь только сам перенос,
+# чтобы тесты могли прогнать его без /dev/tty
+cmd_archive_for() {
+    local SSD_PROJECT="$1" HDD_PROJECT="$2"
+    local ssd_size=$(du -sh "$SSD_PROJECT" 2>/dev/null | cut -f1)
+
+    # Удаляем только те симлинки, чей оригинал реально лежит в архивной
+    # папке на HDD. Раньше сносились все симлинки в дереве — ссылка на
+    # что-то postороннее исчезала вместе с единственным указателем на файл.
+    local -a links_hdd links_other
+    local l tgt
+    for l in "${SSD_PROJECT}"/**/*(N@); do
+        tgt=$(readlink "$l")
+        if [[ "$tgt" == "${HDD_PROJECT}/"* ]]; then
+            links_hdd+=( "$l" )
+        else
+            links_other+=( "$l" )
+        fi
+    done
+
+    (( ${#links_hdd} )) && rm -f "${links_hdd[@]}"
+    print -P "\n  %F{green}✓%f  Удалено симлинков на HDD: ${#links_hdd}"
+    if (( ${#links_other} )); then
+        print -P "  %F{yellow}⚠%f  Сохранено ${#links_other} симлинков за пределы HDD-проекта:"
+        for l in "${links_other[@]}"; do
+            print -P "     %F{240}${l:t} → $(readlink "$l")%f"
+        done
+    fi
 
     print -P "  %F{yellow}⬇%f  Переношу на HDD..."
     mkdir -p "$HDD_PROJECT"
-    local _ok=false
+    local _ok=false _have_rsync=false
     if command -v rsync &>/dev/null; then
+        _have_rsync=true
         rsync -a "$SSD_PROJECT/" "$HDD_PROJECT/" && _ok=true
     else
         cp -Rp "$SSD_PROJECT/." "$HDD_PROJECT/" && _ok=true
     fi
 
-    if [[ "$_ok" == true ]]; then
-        rm -rf "$SSD_PROJECT"
-        print -P "  %F{green}✓%f  Папка на SSD удалена"
-        [[ "$_OS" == "macos" ]] && afplay /System/Library/Sounds/Glass.aiff 2>/dev/null || true
-        print -P "\n%F{green}%B✅ Проект в архиве:%b ${HDD_PROJECT}  (освобождено ~${ssd_size})%f\n"
-    else
+    if [[ "$_ok" != true ]]; then
         print -P "\n%F{red}✗ Ошибка переноса — папка на SSD сохранена: ${SSD_PROJECT}%f\n"
         return 1
     fi
+
+    # Код возврата rsync — недостаточное основание для rm -rf. Сверяем
+    # содержимое вторым проходом: всё, что ещё требует передачи (нет на
+    # HDD, оборвалось, размер не сошёлся), попадёт в вывод.
+    if [[ "$_have_rsync" == true ]]; then
+        print -P "  %F{yellow}⬇%f  Проверяю перенос..."
+        local pending
+        pending=$(rsync -rlpt --dry-run --itemize-changes "$SSD_PROJECT/" "$HDD_PROJECT/" 2>/dev/null \
+            | grep -c '^>f')
+        if (( pending > 0 )); then
+            print -P "\n%F{red}✗ Проверка не прошла: ${pending} файлов не совпали.%f"
+            print -P "%F{red}  Папка на SSD сохранена: ${SSD_PROJECT}%f\n"
+            return 1
+        fi
+        print -P "  %F{green}✓%f  Проверка пройдена"
+    fi
+
+    rm -rf "$SSD_PROJECT"
+    print -P "  %F{green}✓%f  Папка на SSD удалена"
+    [[ "$_OS" == "macos" ]] && afplay /System/Library/Sounds/Glass.aiff 2>/dev/null || true
+    print -P "\n%F{green}%B✅ Проект в архиве:%b ${HDD_PROJECT}  (освобождено ~${ssd_size})%f\n"
 }
 
 # ── proj settings ────────────────────────────────────────────────────────────
 cmd_settings() {
     while true; do
-        source "$CONFIG_FILE"
+        _config_load
         local _del_f=$(mktemp); : > "$_del_f"
         local _del_t="execute-silent(echo d > ${_del_f})+accept"
 
@@ -525,6 +646,60 @@ cmd_menu() {
 }
 
 # ── proj meta ────────────────────────────────────────────────────────────────
+
+# Экранирование по RFC 4180: раньше кавычилось только поле даты, и любое
+# имя файла с запятой сдвигало все последующие колонки.
+_csv_field() {
+    local v="${1//\"/\"\"}"
+    print -rn -- "\"${v}\""
+}
+
+_ncpu() {
+    local n
+    case "$_OS" in
+        macos) n=$(sysctl -n hw.ncpu 2>/dev/null) ;;
+        *)     n=$(nproc 2>/dev/null) ;;
+    esac
+    [[ "$n" == <-> ]] || n=4
+    (( n > 8 )) && n=8
+    print -r -- "$n"
+}
+
+# Печатает одну строку CSV для файла. Вызывается в фоне по одному
+# процессу на файл — mediainfo упирается в диск, и последовательный обход
+# сотни клипов с HDD занимал минуты.
+_meta_row() {
+    local f="$1" cam_name="${1:h:t}"
+    local g v
+    g=$(mediainfo --Inform="General;%Encoded_Date%|%Tagged_Date%|%FileSize%|%Duration/String3%" "$f" 2>/dev/null)
+    v=$(mediainfo --Inform="Video;%Format%|%Width%|%Height%|%FrameRate%" "$f" 2>/dev/null)
+
+    local shot_date tagged size_bytes duration codec width height fps
+    shot_date="${g%%|*}"; g="${g#*|}"
+    tagged="${g%%|*}";    g="${g#*|}"
+    size_bytes="${g%%|*}"; g="${g#*|}"
+    duration="${g}"
+    [[ -z "$shot_date" ]] && shot_date="$tagged"
+    [[ -z "$shot_date" ]] && shot_date="unknown"
+
+    codec="${v%%|*}"; v="${v#*|}"
+    width="${v%%|*}"; v="${v#*|}"
+    height="${v%%|*}"; v="${v#*|}"
+    fps="${v}"
+
+    local size_mb=0
+    [[ "$size_bytes" == <-> ]] && size_mb=$(printf "%.1f" $(( size_bytes / 1048576.0 )))
+
+    local -a row
+    row=( "$cam_name" "${f:t}" "$shot_date" "$duration" "$codec" "${width}x${height}" "$fps" "$size_mb" )
+    local out="" fld
+    for fld in "${row[@]}"; do
+        [[ -n "$out" ]] && out+=","
+        out+="$(_csv_field "$fld")"
+    done
+    print -r -- "$out"
+}
+
 cmd_meta() {
     if ! command -v mediainfo &>/dev/null; then
         print -P "%F{red}✗ mediainfo не установлен. Запусти: brew install mediainfo%f\n"; return 1
@@ -534,104 +709,73 @@ cmd_meta() {
     chosen=$(_pick_project " Media Log ")
     [[ -z "$chosen" ]] && return
 
-    local SSD_PROJECT=$(_project_ssd_path "$chosen")
+    local ssd=$(_project_ssd_path "$chosen")
+    cmd_meta_for "$ssd" "$chosen" || return 1
+    # Открытие результата — часть интерактивного сценария, а не подсчёта:
+    # иначе прогон тестов запускал бы приложение для CSV
+    [[ "$_OS" == "macos" ]] && open "${ssd}/00_Admin/media_log.csv"
+    return 0
+}
+
+cmd_meta_for() {
+    local SSD_PROJECT="$1" chosen="${2:-${1:t}}"
     local CSV_OUT="${SSD_PROJECT}/00_Admin/media_log.csv"
-    local count=0 skipped=0
 
     print -P "\n%B%F{cyan}▶ Media Log:%b ${chosen}%f\n"
 
-    printf "camera,filename,shot_date,duration,codec,resolution,fps,size_mb\n" > "$CSV_OUT"
-
-    for cam_dir in "${SSD_PROJECT}/02_Sources/Video"/Cam_*/; do
-        [[ -d "$cam_dir" ]] || continue
-        local cam_name=$(basename "$cam_dir")
-        print -P "  %B%F{cyan}📁 ${cam_name}%f%b"
-
-        for f in "${cam_dir}"*(N-.); do
-            local filename=$(basename "$f")
-            local ext="${filename:l:e}"
-            [[ "$ext" == (mp4|mov|mxf|avi|r3d|braw|mts|m2ts) ]] || continue
-
-            # Один вызов на General, один на Video
-            local g v
-            g=$(mediainfo --Inform="General;%Encoded_Date%|%Tagged_Date%|%FileSize%|%Duration/String3%" "$f" 2>/dev/null)
-            v=$(mediainfo --Inform="Video;%Format%|%Width%|%Height%|%FrameRate%" "$f" 2>/dev/null)
-
-            local shot_date duration size_bytes size_mb codec width height fps
-            shot_date="${g%%|*}"; g="${g#*|}"
-            local tagged="${g%%|*}"; g="${g#*|}"
-            size_bytes="${g%%|*}"; g="${g#*|}"
-            duration="${g}"
-            [[ -z "$shot_date" ]] && shot_date="$tagged"
-            [[ -z "$shot_date" ]] && shot_date="unknown"
-
-            codec="${v%%|*}"; v="${v#*|}"
-            width="${v%%|*}"; v="${v#*|}"
-            height="${v%%|*}"; v="${v#*|}"
-            fps="${v}"
-            size_mb=$(printf "%.1f" $(( ${size_bytes:-0} / 1048576.0 )) 2>/dev/null || echo "0")
-            local res="${width}x${height}"
-
-            printf '%s,%s,"%s",%s,%s,%s,%s,%s\n' \
-                "$cam_name" "$filename" "$shot_date" "$duration" \
-                "$codec" "$res" "$fps" "$size_mb" >> "$CSV_OUT"
-
-            print -P "    %F{green}✓%f  ${filename}  %F{240}${shot_date}%f"
-            (( count++ ))
-        done
+    local -a media
+    local f
+    for f in "${SSD_PROJECT}/02_Sources/Video"/Cam_*/*(N-.); do
+        [[ "${f:e:l}" == (mp4|mov|mxf|avi|r3d|braw|mts|m2ts) ]] && media+=( "$f" )
     done
 
-    print -P "\n%F{green}%B✅ ${count} файлов → ${CSV_OUT}%f%b\n"
-    [[ "$_OS" == "macos" ]] && open "$CSV_OUT" || true
+    if (( ${#media} == 0 )); then
+        print -P "%F{yellow}⚠  Видеофайлов не найдено.%f\n"; return 0
+    fi
+
+    mkdir -p "${SSD_PROJECT}/00_Admin"
+
+    # Каждый воркер пишет в свой файл: конкурентная дозапись в один CSV
+    # перемешала бы строки. Имена нумерованные — порядок детерминирован.
+    local tmpdir=$(mktemp -d) || return 1
+    local maxjobs=$(_ncpu)
+    local -i i=0 running=0
+    local total=${#media}
+
+    for f in "${media[@]}"; do
+        (( i++ ))
+        _meta_row "$f" > "${tmpdir}/$(printf '%05d' $i)" &
+        (( running++ ))
+        if (( running >= maxjobs )); then
+            wait
+            running=0
+            printf "\r  \033[90mобработано %d/%d\033[0m" "$i" "$total"
+        fi
+    done
+    wait
+    printf "\r  \033[90mобработано %d/%d\033[0m\n" "$total" "$total"
+
+    {
+        print -r -- "camera,filename,shot_date,duration,codec,resolution,fps,size_mb"
+        cat "${tmpdir}"/*(N)
+    } > "$CSV_OUT"
+    rm -rf "$tmpdir"
+
+    print -P "\n%F{green}%B✅ ${total} файлов → ${CSV_OUT}%f%b\n"
+    return 0
 }
 
 # ── proj update ───────────────────────────────────────────────────────────────
 cmd_update() {
     print -P "\n%B%F{cyan}Обновление Studio Tools...%f%b\n"
-    if ! git -C "$STUDIO_DIR" pull; then
+    if ! git -C "$STUDIO_DIR" pull --ff-only; then
         print -P "\n%F{red}✗ Ошибка. Запусти: git -C ~/.studio-tools pull%f\n"
         return 1
     fi
-
-    local new_proj="${STUDIO_DIR}/bin/proj"
-    local cur_proj="$HOME/bin/proj"
-
-    # Если бинарь изменился — копируем и перезапускаем новую версию для деплоя
-    if ! diff -q "$new_proj" "$cur_proj" &>/dev/null; then
-        cp "$new_proj" "$cur_proj" && chmod +x "$cur_proj"
-        print -P "  %F{green}✓%f  bin/proj (новая версия — перезапускаю деплой)"
-        exec "$cur_proj" _deploy
-    fi
-
-    # Бинарь уже актуален — деплоим остальное
-    "$cur_proj" _deploy
-}
-
-cmd_deploy() {
-    if [[ -f "${STUDIO_DIR}/bin/sf" ]]; then
-        cp "${STUDIO_DIR}/bin/sf" "$HOME/bin/sf" && chmod +x "$HOME/bin/sf"
-        print -P "  %F{green}✓%f  bin/sf"
-    fi
-
-    if [[ "$_OS" == "macos" && -f "${STUDIO_DIR}/nimble-commander/minfo.applescript" ]]; then
-        osacompile -o "$HOME/bin/minfo.app" "${STUDIO_DIR}/nimble-commander/minfo.applescript" 2>/dev/null \
-            && print -P "  %F{green}✓%f  minfo.app" \
-            || print -P "  %F{yellow}⚠%f  minfo.app не скомпилирован"
-    fi
-
-    if [[ "$_OS" == "macos" ]]; then
-        local _nc_cfg="$HOME/Library/Application Support/Nimble Commander/Config/Config.json"
-        local _nc_py="${STUDIO_DIR}/nimble-commander/tools.py"
-        if [[ -f "$_nc_py" && -f "$_nc_cfg" ]]; then
-            python3 "$_nc_py" "$_nc_cfg" \
-                && print -P "  %F{green}✓%f  Nimble Commander (тема + настройки)" \
-                || print -P "  %F{yellow}⚠%f  NC: закрой приложение и повтори proj update"
-        fi
-    fi
-
-    rm -f "$_UPDATE_FILE"
-    local ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null)
-    print -P "\n%F{green}%B✅ Обновлено до ${ver}. Перезапусти NC.%f%b\n"
+    # ~/bin/proj — симлинк в репозиторий, так что сам pull уже обновил
+    # команду. Деплой нужен только для minfo.app и конфига NC.
+    "${STUDIO_DIR}/bin/deploy" || return 1
+    print -P "%F{240}  Перезапусти Nimble Commander, чтобы подхватить настройки.%f\n"
 }
 
 # ── proj help ────────────────────────────────────────────────────────────────
@@ -645,17 +789,27 @@ cmd_help() {
   %Bproj status%b         Статус проекта (HDD / симлинки / прокси)
   %Bproj sync%b           Синхронизировать footage с HDD
   %Bproj archive%b        Архивировать проект (SSD → HDD)
+  %Bproj meta%b           Media Log: CSV с метаданными клипов
+  %Bproj menu%b           Меню со всеми действиями (его вызывает NC)
   %Bproj settings%b       Настройки (пути, шаблон папок)
   %Bproj template%b       Открыть шаблон папок в Nimble Commander
   %Bproj update%b         Обновить studio-tools
 
-%F{240}  Из NC: Cmd+N — новый проект   Cmd+Shift+S — синхронизация   Cmd+Shift+I — статус   Cmd+P — меню%f
+%F{240}  Горячие клавиши в Nimble Commander:%f
+%F{240}    Ctrl+Shift+P — меню           Ctrl+Shift+N — новый проект%f
+%F{240}    Ctrl+Shift+S — синхронизация  Ctrl+Shift+I — статус%f
+%F{240}    Ctrl+Shift+A — настройки      Cmd+I — mediainfo-попап%f
+%F{240}    Opt+Shift+D — размер папки (dust)%f
 "
 }
 
 # ════════════════════════════════════════════════════════════════════════════
 # РОУТЕР
 # ════════════════════════════════════════════════════════════════════════════
+
+# tests/run.zsh подключает файл ради отдельных функций — роутер и фоновая
+# проверка обновлений при этом не нужны.
+[[ -n "$PROJ_SOURCE_ONLY" ]] && return 0
 
 # Фоновая проверка обновлений
 (
@@ -680,7 +834,6 @@ case "$1" in
     template) open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
     menu)     cmd_menu ;;
     update)   cmd_update ;;
-    _deploy)  cmd_deploy ;;
     help|-h|--help) cmd_help ;;
     "")
         [[ -f "$_UPDATE_FILE" ]] && \

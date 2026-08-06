@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Установить zsh и shellcheck
+        run: sudo apt-get update && sudo apt-get install -y zsh shellcheck
+
+      # Синтаксис проверяем тем же интерпретатором, которым скрипт запускается
+      - name: Проверить синтаксис zsh
+        run: |
+          for f in bin/proj bin/deploy push.sh uninstall.sh tests/run.zsh; do
+            zsh -n "$f" && echo "ok: $f"
+          done
+
+      - name: Проверить синтаксис bash
+        run: bash -n setup.sh && echo "ok: setup.sh"
+
+      # bin/proj и остальные zsh-скрипты shellcheck не понимает —
+      # проверяем только то, что действительно на bash
+      - name: shellcheck
+        run: shellcheck --severity=warning setup.sh
+
+      - name: Проверить JSON и Python
+        run: |
+          python3 -c "import json; json.load(open('nimble-commander/nc-settings.json')); print('ok: nc-settings.json')"
+          python3 -m py_compile nimble-commander/tools.py && echo "ok: tools.py"
+
+  test:
+    # Тесты гоняем и на Linux, и на macOS: пути, rsync и stat различаются
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Установить zsh
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh rsync
+
+      - name: Прогнать тесты
+        run: zsh tests/run.zsh

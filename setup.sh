@@ -36,8 +36,6 @@ else
     fi
 fi
 
-SCRIPT_DIR="$STUDIO_DIR"
-
 # ── Package manager ───────────────────────────────────────────────────────────
 case "$_OS" in
     macos)
@@ -104,13 +102,27 @@ _brew_install mediainfo
 _brew_install dust
 
 # ── Nerd Font ─────────────────────────────────────────────────────────────────
+# Шрифт ищем глобом, а не `ls | grep`: имена файлов шрифтов содержат
+# пробелы и дефисы, на которых разбор вывода ls ненадёжен
+_font_installed() {
+    local dir pattern
+    for dir in "$@"; do
+        [[ -d "$dir" ]] || continue
+        for pattern in "$dir"/JetBrainsMono*Nerd* "$dir"/JetBrainsMono-NF*; do
+            [[ -e "$pattern" ]] && return 0
+        done
+    done
+    return 1
+}
+
 _font_ok=false
 case "$_OS" in
     macos)
-        { ls ~/Library/Fonts 2>/dev/null || ls /Library/Fonts 2>/dev/null; } | grep -qi "JetBrainsMono.*Nerd" && _font_ok=true
+        _font_installed "$HOME/Library/Fonts" "/Library/Fonts" && _font_ok=true
         ;;
     windows)
-        ls "$USERPROFILE/AppData/Local/Microsoft/Windows/Fonts" 2>/dev/null | grep -qi "JetBrainsMono" && _font_ok=true
+        _font_installed "$USERPROFILE/AppData/Local/Microsoft/Windows/Fonts" \
+                        "$HOME/AppData/Local/Microsoft/Windows/Fonts" && _font_ok=true
         ;;
     linux)
         fc-list 2>/dev/null | grep -qi "JetBrains.*Nerd" && _font_ok=true
@@ -129,38 +141,10 @@ else
     printf "✓ JetBrains Mono Nerd Font\n"
 fi
 
-# ── ~/bin/proj + sf ───────────────────────────────────────────────────────────
-mkdir -p "$HOME/bin"
-cp "$STUDIO_DIR/bin/proj" "$HOME/bin/proj"
-chmod +x "$HOME/bin/proj"
-printf "✓ proj → ~/bin/\n"
-
-if [[ -f "$STUDIO_DIR/bin/sf" ]]; then
-    cp "$STUDIO_DIR/bin/sf" "$HOME/bin/sf"
-    chmod +x "$HOME/bin/sf"
-    printf "✓ sf → ~/bin/\n"
-fi
-
-if [[ "$_OS" == "macos" && -f "$STUDIO_DIR/nimble-commander/minfo.applescript" ]]; then
-    osacompile -o "$HOME/bin/minfo.app" "$STUDIO_DIR/nimble-commander/minfo.applescript" 2>/dev/null \
-        && printf "✓ minfo.app → ~/bin/\n" \
-        || printf "⚠  Не удалось скомпилировать minfo.app\n"
-fi
-
-# ── Nimble Commander: тема, настройки, инструменты ───────────────────────────
-if [[ "$_OS" == "macos" ]]; then
-    _NC_CONFIG="$HOME/Library/Application Support/Nimble Commander/Config/Config.json"
-    _NC_TOOLS_SRC="$STUDIO_DIR/nimble-commander/tools.py"
-    if [[ -f "$_NC_TOOLS_SRC" ]]; then
-        if [[ -f "$_NC_CONFIG" ]]; then
-            python3 "$_NC_TOOLS_SRC" "$_NC_CONFIG" && printf "✓ Nimble Commander (тема + настройки + инструменты)\n" \
-                || printf "⚠  Закрой Nimble Commander и повтори: bash ~/.studio-tools/setup.sh\n"
-        else
-            printf "⚠  Запусти Nimble Commander один раз, затем повтори:\n"
-            printf "   bash ~/.studio-tools/setup.sh\n"
-        fi
-    fi
-fi
+# ── Раскладка файлов ──────────────────────────────────────────────────────────
+# Вся логика деплоя живёт в bin/deploy — здесь её не дублируем.
+chmod +x "$STUDIO_DIR/bin/proj" "$STUDIO_DIR/bin/deploy"
+zsh "$STUDIO_DIR/bin/deploy" || printf "⚠  Деплой завершился с ошибками\n"
 
 # ── PATH ──────────────────────────────────────────────────────────────────────
 _add_path() {

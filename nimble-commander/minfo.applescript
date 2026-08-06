@@ -1,6 +1,8 @@
 on open fileList
     set filePath to POSIX path of (item 1 of fileList)
-    set mi to "/opt/homebrew/bin/mediainfo"
+    -- Путь к mediainfo был захардкожен под Apple Silicon; на Intel-маках
+    -- Homebrew ставит его в /usr/local, и попап молча не открывался.
+    set mi to my findMediainfo()
     set q to quoted form of filePath
 
     -- Папка: показываем размер и счётчики
@@ -22,12 +24,10 @@ on open fileList
         return
     end try
 
-    try
-        do shell script "test -f " & mi
-    on error
+    if mi is "" then
         display alert "minfo" message "mediainfo не установлен.  brew install mediainfo" as warning
         return
-    end try
+    end if
 
     -- Одним вызовом на секцию
     set vRaw to do shell script mi & " --Inform='Video;%Format%|%Format_Profile%|%Width%|%Height%|%FrameRate%|%BitRate/String%|%ScanType%|%ColorSpace%|%BitDepth%|%Duration/String3%' " & q
@@ -133,6 +133,21 @@ on open fileList
 
     display dialog msg with title fName buttons {"OK"} default button 1
 end open
+
+-- Найти mediainfo: Apple Silicon, Intel, затем PATH. "" если не найден.
+on findMediainfo()
+    repeat with p in {"/opt/homebrew/bin/mediainfo", "/usr/local/bin/mediainfo"}
+        set candidate to p as string
+        try
+            do shell script "test -x " & quoted form of candidate
+            return candidate
+        end try
+    end repeat
+    try
+        return do shell script "command -v mediainfo"
+    end try
+    return ""
+end findMediainfo
 
 -- Получить N-е поле из строки с разделителем |
 on field(str, n)

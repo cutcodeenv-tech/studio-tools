@@ -8,3 +8,7 @@ folders.txt
 # macOS
 .DS_Store
 Команды
+
+# Python
+__pycache__/
+*.pyc

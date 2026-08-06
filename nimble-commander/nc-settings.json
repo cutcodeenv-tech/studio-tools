@@ -17,13 +17,17 @@
                         "name": "selected",
                         "regular": "#D4601C",
                         "focused": "#D4601C",
-                        "filter": { "selected": true }
+                        "filter": {
+                            "selected": true
+                        }
                     },
                     {
                         "name": "hidden",
                         "regular": "#555555",
                         "focused": "#888888",
-                        "filter": { "hidden": true }
+                        "filter": {
+                            "hidden": true
+                        }
                     },
                     {
                         "name": "other",
@@ -151,7 +155,7 @@
                 "title": "proj — статус",
                 "path": "~/bin/proj",
                 "parameters": "status",
-                "shortcut": "\u0000",
+                "shortcut": "⇧^i",
                 "startup": 1,
                 "uuid": "b1c2d3e4-f5a6-7890-abcd-ef1234567804"
             },
@@ -165,7 +169,7 @@
             },
             {
                 "title": "Воспроизвести (mpv)",
-                "path": "/opt/homebrew/bin/mpv",
+                "path": "{brew}/bin/mpv",
                 "parameters": "--no-video --block %p",
                 "shortcut": "\u0000",
                 "startup": 1,
@@ -181,7 +185,7 @@
             },
             {
                 "title": "dust — размер папки",
-                "path": "/opt/homebrew/bin/dust",
+                "path": "{brew}/bin/dust",
                 "parameters": "-d 2 %r",
                 "shortcut": "⇧⌥d",
                 "startup": 1,

@@ -1,0 +1,54 @@
+#!/usr/bin/env zsh
+#
+# Единственное место, где раскладываются файлы по системе.
+# Раньше эта логика была продублирована в setup.sh, push.sh и `proj _deploy`,
+# и версии успели разойтись (например, sf копировался то с проверкой, то без).
+
+STUDIO_DIR="${0:A:h:h}"
+BIN_DIR="$HOME/bin"
+
+case "$OSTYPE" in
+    darwin*)       _OS="macos" ;;
+    msys*|cygwin*) _OS="windows" ;;
+    linux*)        _OS="linux" ;;
+    *)             _OS="unknown" ;;
+esac
+
+mkdir -p "$BIN_DIR"
+
+# Симлинк вместо копии: `git pull` в ~/.studio-tools сразу обновляет саму
+# команду. Отпала нужда сравнивать копию с оригиналом и перезапускать
+# скрипт самого себя ради деплоя новой версии.
+ln -sfn "${STUDIO_DIR}/bin/proj" "${BIN_DIR}/proj"
+print -P "  %F{green}✓%f  ~/bin/proj → ~/.studio-tools/bin/proj"
+
+# Хвост от старых установок: bin/sf был устаревшим дублем `proj sync`.
+rm -f "${BIN_DIR}/sf"
+
+if [[ "$_OS" == "macos" && -f "${STUDIO_DIR}/nimble-commander/minfo.applescript" ]]; then
+    rm -rf "${BIN_DIR}/minfo.app"
+    if osacompile -o "${BIN_DIR}/minfo.app" "${STUDIO_DIR}/nimble-commander/minfo.applescript" 2>/dev/null; then
+        print -P "  %F{green}✓%f  minfo.app"
+    else
+        print -P "  %F{yellow}⚠%f  minfo.app не скомпилирован"
+    fi
+fi
+
+if [[ "$_OS" == "macos" ]]; then
+    _nc_cfg="$HOME/Library/Application Support/Nimble Commander/Config/Config.json"
+    _nc_py="${STUDIO_DIR}/nimble-commander/tools.py"
+    if [[ -f "$_nc_py" && -f "$_nc_cfg" ]]; then
+        if python3 "$_nc_py" "$_nc_cfg"; then
+            print -P "  %F{green}✓%f  Nimble Commander (тема + настройки + инструменты)"
+        else
+            print -P "  %F{yellow}⚠%f  NC: закрой приложение и повтори деплой"
+        fi
+    elif [[ -f "$_nc_py" ]]; then
+        print -P "  %F{yellow}⚠%f  Запусти Nimble Commander один раз, затем повтори деплой"
+    fi
+fi
+
+rm -f "${STUDIO_DIR}/.update_available"
+
+_ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
+print -P "\n%F{green}%B✅ Studio Tools ${_ver} развёрнут.%f%b"
