@@ -212,9 +212,9 @@ _config_del() {
 }
 
 # ── ВЫБОР ПРОЕКТА ────────────────────────────────────────────────────────────
-# С PROJECTS_PARENT_ROOT проекты лежат на глубине 2 (категория/проект),
-# без него — прямо в SSD_PROJECTS_ROOT. Проект дальше везде передаётся
-# путём относительно корня ("Категория/2026-05-19_Name").
+# Проекты лежат в корне либо в папках-категориях внутри него. Проект дальше
+# везде передаётся путём относительно корня ("Категория/2026-05-19_Name"
+# или просто "2026-05-19_Name").
 _MONTHS=( янв фев мар апр мая июн июл авг сен окт ноя дек )
 
 _projects_root() {
@@ -223,6 +223,39 @@ _projects_root() {
     else
         print -r -- "$SSD_PROJECTS_ROOT"
     fi
+}
+
+# Папка проекта: дата в начале имени или шаблонные папки NN_* внутри
+# (00_Admin, 01_Project_Files…). Такие папки — сами проекты, внутрь не идём.
+_is_project() {
+    [[ "${1:t}" == [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]* ]] && return 0
+    local -a inner=( "$1"/[0-9][0-9]_*(N/[1]) )
+    (( ${#inner} ))
+}
+
+# Папки-категории: всё в корне, что не проект и не шаблонная NN_* папка
+_list_categories() {
+    local d
+    reply=()
+    for d in "$(_projects_root)"/*(N/); do
+        _is_project "$d" || [[ "${d:t}" == [0-9][0-9]_* ]] || reply+=( "$d" )
+    done
+}
+
+# Все проекты → $reply: из корня и из категорий, но не глубже
+_list_projects() {
+    local d c
+    local -a found
+    for d in "$(_projects_root)"/*(N/); do
+        if _is_project "$d"; then
+            found+=( "$d" )
+        elif [[ "${d:t}" != [0-9][0-9]_* ]]; then
+            for c in "$d"/*(N/); do
+                [[ "${c:t}" == [0-9][0-9]_* ]] || found+=( "$c" )
+            done
+        fi
+    done
+    reply=( "${found[@]}" )
 }
 
 # Обе функции кладут результат в $REPLY — без $(...), чтобы список
@@ -249,13 +282,8 @@ _fmt_date() {
 _pick_project() {
     local header="${1:-Выберите проект}"
     local root=$(_projects_root)
-    local -a dirs
-    local nested=false
-    if [[ "$root" == "$PROJECTS_PARENT_ROOT" ]]; then
-        dirs=( "$root"/*/*(N/) ); nested=true
-    else
-        dirs=( "$root"/*(N/) )
-    fi
+    _list_projects
+    local -a dirs=( "${reply[@]}" )
     if (( ! ${#dirs} )); then
         print -P "%F{yellow}  Проектов пока нет.%f" >&2; return 1
     fi
@@ -292,7 +320,7 @@ _pick_project() {
         ep="${row%%$'\t'*}"; i="${row##*$'\t'}"
         title="${titles[i]}"
         (( ${#title} > tw )) && title="${title[1,tw-1]}…"
-        cat=""; $nested && cat="${${dirs[i]:h}:t}"
+        cat=""; [[ "${dirs[i]:h}" != "$root" ]] && cat="${${dirs[i]:h}:t}"
         _fmt_date $ep
         lines+=( "${(l:nw:)$(( ++n ))}  ${REPLY}   ${(r:tw:)title}   ${cat}" )
         order+=( "${dirs[i]#${root}/}" )
@@ -338,15 +366,14 @@ cmd_new() {
         CAM_COUNT=2
     fi
 
-    local TARGET_ROOT="$SSD_PROJECTS_ROOT"
+    # Категорию спрашиваем, только если в корне они есть (а не одни проекты)
+    local TARGET_ROOT=$(_projects_root) chosen_dir
     if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
-        local chosen_dir
-        local -a cats=( "${PROJECTS_PARENT_ROOT}"/*(N/:t) )
-        if (( ! ${#cats} )); then
-            print -P "%F{red}✗ В ${PROJECTS_PARENT_ROOT} нет папок-категорий.%f\n"; return 1
+        _list_categories
+        if (( ${#reply} )); then
+            chosen_dir=$(print -rl -- "${(@)reply:t}" | _filter "$H · папка") || return
+            TARGET_ROOT="${TARGET_ROOT}/${chosen_dir}"
         fi
-        chosen_dir=$(print -rl -- "${(@)cats}" | _filter "$H · папка") || return
-        TARGET_ROOT="${PROJECTS_PARENT_ROOT}/${chosen_dir}"
     fi
 
     print -P "\n%B%F{cyan}┌─ ${H}%f%b"
