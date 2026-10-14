@@ -18,6 +18,13 @@ case "$OSTYPE" in
     *)             _OS="unknown" ;;
 esac
 
+# Колонки в списках выравниваются по символам только в UTF-8-локали —
+# без неё кириллица считается по байтам и таблица разъезжается
+if [[ "${LC_ALL:-${LC_CTYPE:-$LANG}}" != *(UTF-8|utf8|UTF8|utf-8)* ]]; then
+    [[ "$_OS" == "macos" ]] && export LC_CTYPE="en_US.UTF-8" || export LC_CTYPE="C.UTF-8"
+fi
+zmodload zsh/datetime
+
 _stat_size()  { [[ "$_OS" == "macos" ]] && stat -f%z "$1" 2>/dev/null || stat -c%s "$1" 2>/dev/null || echo 1; }
 _stat_mtime() { [[ "$_OS" == "macos" ]] && stat -f%m "$1" 2>/dev/null || stat -c%Y "$1" 2>/dev/null || echo 0; }
 
@@ -151,6 +158,9 @@ trap 'print ""; exit 130' INT
 _gum() {
     gum "$@"; local rc=$?
     (( rc == 130 )) && kill -INT $$   # $$ — основной процесс и из $(...)
+    # на Esc choose/filter/input печатают «nothing selected» / «not submitted» —
+    # стираем эту строку, иначе каждое «назад» оставляет мусор на экране
+    (( rc == 1 )) && [[ "$1" == (choose|filter|input) ]] && print -n $'\e[1A\e[2K' >&2
     return $rc
 }
 
@@ -203,33 +213,107 @@ _config_del() {
 
 # ── ВЫБОР ПРОЕКТА ────────────────────────────────────────────────────────────
 # С PROJECTS_PARENT_ROOT проекты лежат на глубине 2 (категория/проект),
-# без него — прямо в SSD_PROJECTS_ROOT. Имена начинаются с YYYY-MM-DD,
-# поэтому sort -r даёт свежие сверху надёжнее, чем ls -t.
-# Префикс срезаем через ${..#..}, а не sed: в путях вида "[001] Projects"
-# скобки для sed — регулярка, и префикс бы не совпал.
+# без него — прямо в SSD_PROJECTS_ROOT. Проект дальше везде передаётся
+# путём относительно корня ("Категория/2026-05-19_Name").
+_MONTHS=( янв фев мар апр мая июн июл авг сен окт ноя дек )
+
+_projects_root() {
+    if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
+        print -r -- "$PROJECTS_PARENT_ROOT"
+    else
+        print -r -- "$SSD_PROJECTS_ROOT"
+    fi
+}
+
+# Обе функции кладут результат в $REPLY — без $(...), чтобы список
+# из сотни проектов не порождал сотни процессов.
+# "2026-05-19_Nike_Promo" → "Nike Promo"
+_project_title() {
+    local t="${1:t}"
+    t="${t#[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]}"
+    t="${t#[_ -]}"; t="${t//_/ }"
+    REPLY="${t:-${1:t}}"
+}
+
+# epoch → "19 мая 2026"
+_fmt_date() {
+    local d m y
+    strftime -s d '%d' "$1"; strftime -s m '%m' "$1"; strftime -s y '%Y' "$1"
+    REPLY="$d ${_MONTHS[m]} $y"
+}
+
+# Таблица проектов, свежесозданные сверху:
+#    1  14 окт 2026   Nike Promo                 Clients
+# Дата — создание папки (birth time); если ФС её не знает — дата из имени,
+# в крайнем случае время изменения. Выбранный номер → путь проекта.
 _pick_project() {
     local header="${1:-Выберите проект}"
-    local list
-    if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
-        local -a dirs=( "${PROJECTS_PARENT_ROOT}"/*/*(N/) )
-        # сортируем по имени проекта (после "категория/"), а не по категории
-        list=$(print -rl -- "${(@)dirs#${PROJECTS_PARENT_ROOT}/}" | sort -t/ -k2,2r)
+    local root=$(_projects_root)
+    local -a dirs
+    local nested=false
+    if [[ "$root" == "$PROJECTS_PARENT_ROOT" ]]; then
+        dirs=( "$root"/*/*(N/) ); nested=true
     else
-        local -a dirs=( "${SSD_PROJECTS_ROOT}"/*(N/:t) )
-        list=$(print -rl -- "${(@)dirs}" | sort -r)
+        dirs=( "$root"/*(N/) )
     fi
-    if [[ -z "$list" ]]; then
+    if (( ! ${#dirs} )); then
         print -P "%F{yellow}  Проектов пока нет.%f" >&2; return 1
     fi
-    print -r -- "$list" | _filter "$header  · Esc Esc — назад"
+
+    # одним вызовом stat: "<создание> <изменение>" на каждую папку
+    local -a times rows
+    if [[ "$_OS" == "macos" ]]; then
+        times=( "${(@f)$(stat -f '%B %m' -- "${dirs[@]}" 2>/dev/null)}" )
+    else
+        times=( "${(@f)$(stat -c '%W %Y' -- "${dirs[@]}" 2>/dev/null)}" )
+    fi
+    integer i ep
+    local born
+    for (( i = 1; i <= ${#dirs}; i++ )); do
+        born="${times[i]%% *}"; ep=0
+        if [[ "$born" == <1-> ]]; then
+            ep=$born
+        elif [[ "${dirs[i]:t}" =~ '^([0-9]{4}-[0-9]{2}-[0-9]{2})' ]]; then
+            strftime -r -s ep '%Y-%m-%d' "${match[1]}" 2>/dev/null
+        fi
+        (( ep > 0 )) || ep="${times[i]##* }"
+        rows+=( "${(l:12::0:)ep}"$'\t'"$i" )
+    done
+
+    local -a titles order lines
+    local row title cat
+    integer n=0 nw=${#${#dirs}} tw=10
+    for (( i = 1; i <= ${#dirs}; i++ )); do
+        _project_title "${dirs[i]}"; titles[i]="$REPLY"
+        (( ${#REPLY} > tw )) && tw=${#REPLY}
+    done
+    (( tw > 40 )) && tw=40
+    for row in "${(@On)rows}"; do
+        ep="${row%%$'\t'*}"; i="${row##*$'\t'}"
+        title="${titles[i]}"
+        (( ${#title} > tw )) && title="${title[1,tw-1]}…"
+        cat=""; $nested && cat="${${dirs[i]:h}:t}"
+        _fmt_date $ep
+        lines+=( "${(l:nw:)$(( ++n ))}  ${REPLY}   ${(r:tw:)title}   ${cat}" )
+        order+=( "${dirs[i]#${root}/}" )
+    done
+
+    local sel
+    sel=$(print -rl -- "${lines[@]}" | _filter "$header (${#dirs})  · Esc Esc — назад") || return
+    [[ "$sel" =~ '^ *([0-9]+)' ]] || return 1
+    print -r -- "${order[${match[1]}]}"
 }
 
 _project_ssd_path() {
-    if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
-        print -r -- "${PROJECTS_PARENT_ROOT}/$1"
-    else
-        print -r -- "${SSD_PROJECTS_ROOT}/$1"
-    fi
+    print -r -- "$(_projects_root)/$1"
+}
+
+# "Clients/2026-05-19_Nike_Promo" → "Nike Promo · Clients"
+_project_label() {
+    _project_title "$1"
+    local label="$REPLY"
+    [[ "$1" == */* ]] && label+=" · ${1:h}"
+    print -r -- "$label"
 }
 
 # На HDD проекты лежат плоско, без категорий — берём только имя проекта
@@ -327,7 +411,7 @@ cmd_status() {
     local HDD_PROJECT=$(_project_hdd_path "$chosen")
     local total_hdd=0 total_symlinks=0 total_proxies=0
 
-    print -P "\n%B%F{cyan}┌─ ${chosen}%f%b"
+    print -P "\n%B%F{cyan}┌─ $(_project_label "$chosen")%f%b"
 
     local -a cams=( "${SSD_PROJECT}/02_Sources/Video"/Cam_*(N/) )
     (( ${#cams} )) || print -P "%B%F{cyan}│%f%b  %F{yellow}⚠%f  Нет папок Cam_* в 02_Sources/Video"
@@ -608,7 +692,7 @@ _project_menu() {
     while true; do
         # после архивирования папки на SSD больше нет — возвращаемся к списку
         [[ -d "$(_project_ssd_path "$chosen")" ]] || return 0
-        act=$(_choose "Проекты › ${chosen}" \
+        act=$(_choose "Проекты › $(_project_label "$chosen")" \
             "Статус" "Синхронизировать footage" "Media Log (CSV)" "Открыть папку" "Архивировать" "$_BACK") \
             || return 0
         case "$act" in
