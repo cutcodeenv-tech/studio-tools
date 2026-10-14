@@ -18,11 +18,19 @@ case "$OSTYPE" in
     *)             _OS="unknown" ;;
 esac
 
-# Колонки в списках выравниваются по символам только в UTF-8-локали —
-# без неё кириллица считается по байтам и таблица разъезжается
-if [[ "${LC_ALL:-${LC_CTYPE:-$LANG}}" != *(UTF-8|utf8|UTF8|utf-8)* ]]; then
-    [[ "$_OS" == "macos" ]] && export LC_CTYPE="en_US.UTF-8" || export LC_CTYPE="C.UTF-8"
+# Колонки в списках выравниваются по символам, только если zsh работает
+# в UTF-8, — иначе кириллица считается по байтам и таблица разъезжается.
+# Окружение бывает любым (LC_ALL=C, LC_CTYPE=UTF-8, …), поэтому проверяем
+# на деле: «ж» должна быть длиной в один символ.
+setopt multibyte
+_utf8_ok() { local p="ж"; (( ${#p} == 1 )) }
+if ! _utf8_ok; then
+    for _loc in en_US.UTF-8 C.UTF-8 UTF-8 ru_RU.UTF-8; do
+        export LC_ALL="$_loc" 2>/dev/null
+        _utf8_ok && break
+    done
 fi
+_utf8_ok && _MB=1 || _MB=0
 zmodload zsh/datetime
 
 _stat_size()  { [[ "$_OS" == "macos" ]] && stat -f%z "$1" 2>/dev/null || stat -c%s "$1" 2>/dev/null || echo 1; }
@@ -315,29 +323,44 @@ _sort_by_created() {
     done
 }
 
-# Строки таблицы для $_SORTED: "  1  14 окт 2026   Название   <хвост>".
-# Аргументы — хвосты по одному на строку → $reply
+# Ширина строки в символах (в $REPLY). Без UTF-8-режима ${#s} — это байты,
+# тогда считаем байты без «хвостовых» байтов UTF-8 (0x80–0xBF).
+_width() {
+    if (( _MB )); then
+        REPLY=${#1}
+    else
+        local s="${1//[$'\x80'-$'\xbf']/}"
+        REPLY=${#s}
+    fi
+}
+
+# Строки таблицы для $_SORTED: "1   14 окт 2026   Название      <хвост>".
+# Колонки дополняются пробелами вручную по _width, а не ${(r:n:)}, чтобы
+# не зависеть от локали. Аргументы — хвосты по строкам → $reply
 _table_lines() {
-    local -a tails=( "$@" ) titles
-    integer i tw=10 nw=${#${#_SORTED}}
+    local -a tails=( "$@" ) titles widths
+    integer i w tw=10 nw=${#${#_SORTED}}
     reply=()
     (( ${#_SORTED} )) || return 0
     for (( i = 1; i <= ${#_SORTED}; i++ )); do
         _title "${_SORTED[i]}"; titles[i]="$REPLY"
-        (( ${#REPLY} > tw )) && tw=${#REPLY}
+        # длинные названия обрезаем (посимвольно — только в UTF-8-режиме)
+        if (( _MB && ${#REPLY} > 40 )); then titles[i]="${REPLY[1,39]}…"; fi
+        _width "${titles[i]}"; widths[i]=$REPLY
+        (( REPLY > tw )) && tw=$REPLY
     done
-    (( tw > 40 )) && tw=40
-    local t
+    local pad
     for (( i = 1; i <= ${#_SORTED}; i++ )); do
-        t="${titles[i]}"; (( ${#t} > tw )) && t="${t[1,tw-1]}…"
         _fmt_date "${_EPOCHS[i]}"
-        reply+=( "${(l:nw:)i}  ${REPLY}   ${(r:tw:)t}   ${tails[i]}" )
+        pad="${(l:$(( tw - widths[i] )):: :)}"
+        # номер выровнен влево: ведущие пробелы gum съедает у строки под курсором
+        reply+=( "${(r:nw:)i}  ${REPLY}   ${titles[i]}${pad}   ${tails[i]}" )
     done
 }
 
 # Номер в начале выбранной строки таблицы (в $REPLY)
 _row_num() {
-    [[ "$1" =~ '^ *([0-9]+)  ' ]] || return 1
+    [[ "$1" =~ '^ *([0-9]+) ' ]] || return 1
     REPLY="${match[1]}"
 }
 
@@ -365,17 +388,26 @@ _pick_entry() {
     print -r -- "${sorted[REPLY]}"
 }
 
-# Только папки проектов (для «Новая серия» из командной строки) → имя
-_pick_project_dir() {
+# Проект для новой серии: «＋ Новый проект» и существующие (свежие сверху).
+# → имя папки проекта или "/new" (слэша в имени папки быть не может).
+# Сам проект создаёт вызывающий — не внутри $(...), чтобы его вывод и
+# ввод названия не попали в результат.
+_NEW_PROJECT="＋ Новый проект"
+_pick_or_new_project() {
     _list_projects
-    if (( ! ${#reply} )); then
-        print -P "%F{yellow}  Проектов пока нет — создай: proj new-project%f" >&2; return 1
-    fi
     _sort_by_created "${reply[@]}"
-    local -a sorted=( "${_SORTED[@]}" )
-    _table_lines
+    local -a sorted=( "${_SORTED[@]}" ) tails
+    local d
+    for d in "${sorted[@]}"; do
+        _list_series "$d"; _n_series ${#reply}; tails+=( "$REPLY" )
+    done
+    _table_lines "${tails[@]}"
     local sel
-    sel=$(print -rl -- "${reply[@]}" | _filter "${1:-Проект} · Esc Esc — назад") || return
+    sel=$(print -rl -- "$_NEW_PROJECT" "${reply[@]}" \
+        | _filter "Новая серия · в каком проекте?  · Esc Esc — назад") || return
+    if [[ "$sel" == "$_NEW_PROJECT" ]]; then
+        print -r -- "/new"; return
+    fi
     _row_num "$sel" || return 1
     print -r -- "${sorted[REPLY]:t}"
 }
@@ -439,8 +471,9 @@ _safe_name() {
 # ════════════════════════════════════════════════════════════════════════════
 
 # ── proj new-project ─────────────────────────────────────────────────────────
-# Проект — просто папка с названием; серии создаются внутри него
-cmd_new_project() {
+# Проект — просто папка с названием; серии создаются внутри него.
+# _create_project → имя созданной папки в $REPLY
+_create_project() {
     local name
     name=$(_input "Новый проект · название" "" "Например: Nike") || return
     _safe_name "$name"
@@ -455,14 +488,24 @@ cmd_new_project() {
     mkdir -p "$ssd_dir" || return 1
     [[ -d "$HDD_SOURCES_ROOT" ]] && mkdir -p "${HDD_SOURCES_ROOT}/${dir_name}"
     print -P "\n%F{green}%B✅ Проект создан:%b ${ssd_dir}%f\n"
-    _project_screen "$dir_name"
+    REPLY="$dir_name"
+}
+
+cmd_new_project() {
+    _create_project && _project_screen "$REPLY"
 }
 
 # ── proj new ─────────────────────────────────────────────────────────────────
 # Новая серия внутри проекта: структура из template/ + папки камер
 cmd_new_series() {
     local proj="$1"
-    [[ -n "$proj" ]] || proj=$(_pick_project_dir "Новая серия · проект") || return
+    if [[ -z "$proj" ]]; then
+        proj=$(_pick_or_new_project) || return
+        if [[ "$proj" == "/new" ]]; then
+            _create_project || return
+            proj="$REPLY"
+        fi
+    fi
     _title "$proj"
     local H="Новая серия · $REPLY"
     local SERIES_NAME CAM_COUNT
@@ -788,11 +831,11 @@ cmd_menu() {
     local sel
     while true; do
         sel=$(_choose "Studio Tools ${PROJ_VERSION}" \
-            "Проекты" "Новый проект" "Настройки" "Шаблон папок" "Обновить Studio Tools" "Выход") \
+            "Проекты" "Новый проект / серия" "Настройки" "Шаблон папок" "Обновить Studio Tools" "Выход") \
             || return 0
         case "$sel" in
             "Проекты")               _browse_projects ;;
-            "Новый проект")          cmd_new_project ;;
+            "Новый проект / серия")  cmd_new_series ;;
             "Настройки")             cmd_settings ;;
             "Шаблон папок")          _reveal "$TEMPLATE_DIR" ;;
             "Обновить Studio Tools") cmd_update ;;
