@@ -39,7 +39,7 @@ _check_deps() {
     local _cache="${STUDIO_DIR}/.deps_ok"
     if [[ -f "$_cache" ]] && \
        (( $(date +%s) - $(_stat_mtime "$_cache") < 86400 )) && \
-       command -v fzf &>/dev/null; then
+       command -v gum &>/dev/null; then
         return 0
     fi
 
@@ -62,11 +62,12 @@ _check_deps() {
 
     local _any=false
 
-    if ! command -v fzf &>/dev/null; then
-        print -P "%F{cyan}  → Устанавливаю fzf...%f"
+    if ! command -v gum &>/dev/null; then
+        print -P "%F{cyan}  → Устанавливаю gum (меню)...%f"
         case "$_OS" in
-            macos)   brew install fzf ;;
-            windows) scoop install fzf ;;
+            macos)   brew install gum ;;
+            windows) scoop install charm-gum ;;
+            *)       print -P "%F{red}✗ Установи gum: https://github.com/charmbracelet/gum#installation%f"; return 1 ;;
         esac
         _any=true
     fi
@@ -139,6 +140,48 @@ _reveal() {
     esac
 }
 
+# ── ИНТЕРФЕЙС (gum) ──────────────────────────────────────────────────────────
+# Esc в любом меню — назад (gum возвращает 1). Ctrl+C gum перехватывает сам
+# и возвращает 130 — тогда гасим всё приложение, а не только текущий экран.
+_C_ACCENT="#ff875f"
+_C_HEAD="#5fafff"
+_BACK="← Назад"
+trap 'print ""; exit 130' INT
+
+_gum() {
+    gum "$@"; local rc=$?
+    (( rc == 130 )) && kill -INT $$   # $$ — основной процесс и из $(...)
+    return $rc
+}
+
+# _choose "Заголовок" пункт... → выбранный пункт
+_choose() {
+    local header="$1"; shift
+    _gum choose --header="$header" --cursor="▸ " --height=15 --no-show-help \
+        --cursor.foreground="$_C_ACCENT" --selected.foreground="$_C_ACCENT" \
+        --header.foreground="$_C_HEAD" -- "$@"
+}
+
+# список на stdin | _filter "Заголовок" → выбранная строка, с поиском по вводу.
+# Первый Esc снимает фокус с поиска, второй — назад.
+_filter() {
+    _gum filter --header="$1" --placeholder="Поиск…" --prompt="› " --indicator="▸" \
+        --height=15 --header.foreground="$_C_HEAD" --prompt.foreground="$_C_ACCENT" \
+        --indicator.foreground="$_C_ACCENT" --match.foreground="$_C_ACCENT"
+}
+
+# _input "Заголовок" [значение] [подсказка] → введённая строка
+_input() {
+    _gum input --header="$1" --value="${2:-}" --placeholder="${3:-}" --prompt="› " \
+        --header.foreground="$_C_HEAD" --prompt.foreground="$_C_ACCENT"
+}
+
+# _confirm "Вопрос" → 0 да; 1 нет или Esc
+_confirm() {
+    _gum confirm --affirmative="Да" --negative="Нет" --default=false \
+        --prompt.foreground="$_C_HEAD" --selected.background="$_C_ACCENT" "$1"
+}
+
 # ── ЗАПИСЬ В КОНФИГ ──────────────────────────────────────────────────────────
 _config_set() {
     local key="$1" val="$2" tmpfile=$(mktemp) found=false
@@ -155,7 +198,7 @@ _config_set() {
 
 _config_del() {
     grep -v "^${1}=" "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
-    mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"; source "$CONFIG_FILE"
+    mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"; unset "$1"; source "$CONFIG_FILE"
 }
 
 # ── ВЫБОР ПРОЕКТА ────────────────────────────────────────────────────────────
@@ -165,7 +208,7 @@ _config_del() {
 # Префикс срезаем через ${..#..}, а не sed: в путях вида "[001] Projects"
 # скобки для sed — регулярка, и префикс бы не совпал.
 _pick_project() {
-    local label="${1:- Выберите проект }"
+    local header="${1:-Выберите проект}"
     local list
     if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
         local -a dirs=( "${PROJECTS_PARENT_ROOT}"/*/*(N/) )
@@ -175,14 +218,10 @@ _pick_project() {
         local -a dirs=( "${SSD_PROJECTS_ROOT}"/*(N/:t) )
         list=$(print -rl -- "${(@)dirs}" | sort -r)
     fi
-    [[ -z "$list" ]] && return 1
-    print -r -- "$list" | fzf \
-        --prompt="  Проект > " \
-        --height=40% \
-        --border=rounded \
-        --border-label="$label" \
-        --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-        --pointer="▶" --no-multi
+    if [[ -z "$list" ]]; then
+        print -P "%F{yellow}  Проектов пока нет.%f" >&2; return 1
+    fi
+    print -r -- "$list" | _filter "$header  · Esc Esc — назад"
 }
 
 _project_ssd_path() {
@@ -204,34 +243,33 @@ _project_hdd_path() {
 
 # ── proj new ─────────────────────────────────────────────────────────────────
 cmd_new() {
-    print -P "\n%B%F{cyan}┌─ Новый проект ─────────────────────────┐%f%b"
-    print -P "%B%F{cyan}│%f%b Название: \c"; read PROJECT_NAME
-    if [[ -z "$PROJECT_NAME" ]]; then
-        print -P "%F{red}Отменено.%f\n"; return 1
+    local H="Новый проект"
+    local PROJECT_NAME CAM_COUNT
+    PROJECT_NAME=$(_input "$H · название" "" "Например: Nike Promo") || return
+    if [[ -z "${PROJECT_NAME// /}" ]]; then
+        print -P "%F{red}Отменено: пустое название.%f\n"; return 1
     fi
-
-    print -P "%B%F{cyan}│%f%b Камер (1-10) [2]: \c"; read CAM_COUNT
+    CAM_COUNT=$(_input "$H · сколько камер (1–10)" "2") || return
     if ! [[ "$CAM_COUNT" =~ ^[0-9]+$ ]] || (( CAM_COUNT < 1 || CAM_COUNT > 10 )); then
         CAM_COUNT=2
     fi
-    print -P "%B%F{cyan}└────────────────────────────────────────┘%f%b"
 
     local TARGET_ROOT="$SSD_PROJECTS_ROOT"
     if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
         local chosen_dir
         local -a cats=( "${PROJECTS_PARENT_ROOT}"/*(N/:t) )
-        chosen_dir=$(print -rl -- "${(@)cats}" | fzf \
-            --prompt="  Папка > " \
-            --height=40% \
-            --border=rounded \
-            --border-label=" Выберите папку проекта " \
-            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-            --pointer="▶" --no-multi)
-        if [[ -z "$chosen_dir" ]]; then
-            print -P "%F{red}Отменено.%f\n"; return 1
+        if (( ! ${#cats} )); then
+            print -P "%F{red}✗ В ${PROJECTS_PARENT_ROOT} нет папок-категорий.%f\n"; return 1
         fi
+        chosen_dir=$(print -rl -- "${(@)cats}" | _filter "$H · папка") || return
         TARGET_ROOT="${PROJECTS_PARENT_ROOT}/${chosen_dir}"
     fi
+
+    print -P "\n%B%F{cyan}┌─ ${H}%f%b"
+    print -P "%B%F{cyan}│%f%b  Название:  ${PROJECT_NAME}"
+    print -P "%B%F{cyan}│%f%b  Камер:     ${CAM_COUNT}"
+    [[ -n "$chosen_dir" ]] && print -P "%B%F{cyan}│%f%b  Папка:     ${chosen_dir}"
+    print -P "%B%F{cyan}└────────────────────────────────────────┘%f%b"
 
     local DATE=$(date +%Y-%m-%d)
     # / и : в имени дали бы вложенные папки (: в Finder отображается как /)
@@ -276,17 +314,14 @@ cmd_new() {
     done
     $hdd_ok || print -P "  %F{yellow}⚠%f  HDD не смонтирован — папки камер на HDD не созданы"
 
-    print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f"
-    print -P "%F{cyan}│%f Открыть папку? [y/N]: \c"; read OPEN_DIR
-    [[ "$OPEN_DIR" == (y|Y) ]] && _reveal "$SSD_ROOT"
-    print ""
+    print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f\n"
+    _confirm "Открыть папку проекта?" && _reveal "$SSD_ROOT"
 }
 
 # ── proj status ───────────────────────────────────────────────────────────────
 cmd_status() {
-    local chosen
-    chosen=$(_pick_project " Статус проекта ")
-    [[ -z "$chosen" ]] && return
+    local chosen="$1"
+    [[ -n "$chosen" ]] || chosen=$(_pick_project "Статус проекта") || return
 
     local SSD_PROJECT=$(_project_ssd_path "$chosen")
     local HDD_PROJECT=$(_project_hdd_path "$chosen")
@@ -329,9 +364,8 @@ cmd_sync() {
         print -P "%F{red}✗ HDD не смонтирован: ${HDD_SOURCES_ROOT}%f\n"; return 1
     fi
 
-    local chosen
-    chosen=$(_pick_project " Выберите проект ")
-    [[ -z "$chosen" ]] && { print -P "%F{red}Отменено.%f\n"; return; }
+    local chosen="$1"
+    [[ -n "$chosen" ]] || chosen=$(_pick_project "Синхронизация") || return
 
     local SSD_PROJECT=$(_project_ssd_path "$chosen")
     local HDD_PROJECT=$(_project_hdd_path "$chosen")
@@ -380,9 +414,8 @@ cmd_sync() {
 
 # ── proj open ────────────────────────────────────────────────────────────────
 cmd_open() {
-    local chosen
-    chosen=$(_pick_project " Открыть проект ")
-    [[ -z "$chosen" ]] && return
+    local chosen="$1"
+    [[ -n "$chosen" ]] || chosen=$(_pick_project "Открыть папку проекта") || return
     _reveal "$(_project_ssd_path "$chosen")"
 }
 
@@ -394,9 +427,8 @@ cmd_archive() {
         print -P "%F{red}✗ HDD не смонтирован: ${HDD_SOURCES_ROOT}%f\n"; return 1
     fi
 
-    local chosen
-    chosen=$(_pick_project " Архивировать проект ")
-    [[ -z "$chosen" ]] && { print -P "%F{red}Отменено.%f\n"; return; }
+    local chosen="$1"
+    [[ -n "$chosen" ]] || chosen=$(_pick_project "Архивировать проект") || return
 
     local SSD_PROJECT=$(_project_ssd_path "$chosen")
     local HDD_PROJECT=$(_project_hdd_path "$chosen")
@@ -407,10 +439,8 @@ cmd_archive() {
 
     print -P "%B▶ Проект:%b ${chosen}  (SSD: ${ssd_size})"
     print -P "  → ${HDD_PROJECT}"
-    print -P "  Симлинки будут удалены, папка на SSD — стёрта после переноса и сверки."
-    print -P "\n%F{yellow}Продолжить? [y/N]: %f\c"
-    read CONFIRM </dev/tty
-    if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
+    print -P "  Симлинки будут удалены, папка на SSD — стёрта после переноса и сверки.\n"
+    if ! _confirm "Архивировать ${chosen:t}?"; then
         print -P "%F{red}Отменено.%f\n"; return
     fi
 
@@ -492,91 +522,102 @@ cmd_archive() {
 
 # ── proj settings ────────────────────────────────────────────────────────────
 cmd_settings() {
+    local -a keys=( PROJECTS_PARENT_ROOT SSD_PROJECTS_ROOT HDD_SOURCES_ROOT PREMIERE_TEMPLATE )
+    local -A names=(
+        PROJECTS_PARENT_ROOT "Корень с категориями"
+        SSD_PROJECTS_ROOT    "Проекты на SSD"
+        HDD_SOURCES_ROOT     "Исходники на HDD"
+        PREMIERE_TEMPLATE    "Шаблон Premiere"
+    )
+    local -a items
+    local key val sel act new_val label
+    integer idx
     while true; do
         source "$CONFIG_FILE"
-        local _del_f=$(mktemp); : > "$_del_f"
-        local _del_t="execute-silent(echo d > ${_del_f})+accept"
+        items=()
+        for key in "${keys[@]}"; do
+            val="${(P)key}"
+            label="$(printf '%-22s' "${names[$key]}")${val:-—}"
+            [[ -n "$val" && ! -e "$val" ]] && label+="  ⚠ не найден"
+            items+=( "$label" )
+        done
 
-        local result
-        result=$(printf \
-            "  PROJECTS_PARENT_ROOT %s\n  SSD_PROJECTS_ROOT    %s\n  HDD_SOURCES_ROOT     %s\n  PREMIERE_TEMPLATE    %s\n  Шаблон папок" \
-            "$PROJECTS_PARENT_ROOT" "$SSD_PROJECTS_ROOT" "$HDD_SOURCES_ROOT" "$PREMIERE_TEMPLATE" \
-            | fzf \
-            --prompt="  > " --height=13 --layout=reverse --border=rounded \
-            --border-label=" Настройки " \
-            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-            --pointer="▶" --no-multi --expect="ctrl-r" \
-            --bind="del:${_del_t}" --bind="bspace:${_del_t}" \
-            --header="  Enter/Ctrl+R: изменить   Del: сбросить   Esc: назад")
-
-        local is_delete=false
-        [[ -s "$_del_f" ]] && is_delete=true
-        rm -f "$_del_f"
-        [[ -z "$result" ]] && break
-
-        local lines=("${(@f)result}"); local selected="${lines[2]}"
-        [[ -z "$selected" ]] && continue
-
-        if [[ "$selected" == *"Шаблон папок"* ]]; then
-            _reveal "$TEMPLATE_DIR"; continue
-        fi
-
-        local setting_key setting_val
-        case "$selected" in
-            *"PROJECTS_PARENT_ROOT"*) setting_key="PROJECTS_PARENT_ROOT"; setting_val="$PROJECTS_PARENT_ROOT" ;;
-            *"SSD_PROJECTS_ROOT"*)    setting_key="SSD_PROJECTS_ROOT";    setting_val="$SSD_PROJECTS_ROOT"    ;;
-            *"HDD_SOURCES_ROOT"*)     setting_key="HDD_SOURCES_ROOT";     setting_val="$HDD_SOURCES_ROOT"     ;;
-            *"PREMIERE_TEMPLATE"*)    setting_key="PREMIERE_TEMPLATE";    setting_val="$PREMIERE_TEMPLATE"    ;;
+        sel=$(_choose "Настройки" "${items[@]}" "Шаблон папок" "$_BACK") || return 0
+        case "$sel" in
+            "$_BACK")       return 0 ;;
+            "Шаблон папок") _reveal "$TEMPLATE_DIR"; continue ;;
         esac
-        [[ -z "$setting_key" ]] && continue
+        idx=${items[(ie)$sel]}
+        (( idx <= ${#keys} )) || continue
+        key="${keys[$idx]}"; val="${(P)key}"
 
-        if $is_delete; then
-            print -P "\n%F{yellow}Сбросить %B${setting_key}%b? [y/N]: \c"
-            read CONFIRM </dev/tty
-            if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
-                _config_del "$setting_key"
-                print -P "  %F{red}✗%f  ${setting_key} удалён\n"
-            fi
-        else
-            print -P "\n%B%F{cyan}┌─ ${setting_key}%f%b"
-            print -P "%B%F{cyan}│%f%b \c"
-            local new_val="$setting_val"
-            vared new_val
-            print -P "%B%F{cyan}└────────────────────────────────────────┘%f%b"
-            if [[ -n "$new_val" && "$new_val" != "$setting_val" ]]; then
-                _config_set "$setting_key" "$new_val"
-                print -P "  %F{green}✓%f  Сохранено\n"
-            fi
-        fi
+        act=$(_choose "Настройки › ${names[$key]}: ${val:-—}" "Изменить" "Сбросить" "$_BACK") || continue
+        case "$act" in
+            "Изменить")
+                new_val=$(_input "${names[$key]}" "$val" "/Volumes/…") || continue
+                if [[ -n "$new_val" && "$new_val" != "$val" ]]; then
+                    _config_set "$key" "$new_val"
+                    print -P "  %F{green}✓%f  ${names[$key]}: ${new_val}"
+                fi
+                ;;
+            "Сбросить")
+                if _confirm "Сбросить «${names[$key]}»?"; then
+                    _config_del "$key"
+                    print -P "  %F{green}✓%f  ${names[$key]} сброшен"
+                fi
+                ;;
+        esac
     done
 }
 
 # ── главное меню ─────────────────────────────────────────────────────────────
-# Крутится, пока не нажат Esc: вывод команды остаётся над меню
+# Studio Tools → Проекты → <проект> → действие. Esc везде — на уровень выше,
+# вывод команд остаётся на экране над меню.
 cmd_menu() {
     [[ -f "$_UPDATE_FILE" ]] && \
-        print -P "%F{yellow}  ⬆  Доступно обновление → Обновить Studio Tools%f"
-    local action
+        print -P "%F{yellow}  ⬆  Доступно обновление → «Обновить Studio Tools»%f"
+    print -P "%F{240}  ↑↓ выбор · Enter открыть · Esc назад · Ctrl+C выход%f\n"
+    local sel
     while true; do
-        action=$(printf \
-            "  Новый проект\n  Открыть папку проекта\n  Синхронизировать footage\n  Статус проекта\n  Архивировать проект\n  Media Log (CSV)\n  Настройки\n  Шаблон папок\n  Обновить Studio Tools" \
-            | fzf \
-            --prompt="  > " --height=13 --layout=reverse --border=rounded \
-            --border-label=" Studio Tools ${PROJ_VERSION} " \
-            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-            --header="  Enter: выбрать   Esc: выход" \
-            --pointer="▶" --no-multi)
-        [[ -z "$action" ]] && return
-        case "$action" in
-            *"Новый"*)     cmd_new ;;
-            *"Открыть"*)   cmd_open ;;
-            *"Синхрон"*)   cmd_sync ;;
-            *"Статус"*)    cmd_status ;;
-            *"Архив"*)     cmd_archive ;;
-            *"Media Log"*) cmd_meta ;;
-            *"Настройки"*) cmd_settings ;;
-            *"Шаблон"*)    _reveal "$TEMPLATE_DIR" ;;
-            *"Обновить"*)  cmd_update ;;
+        sel=$(_choose "Studio Tools ${PROJ_VERSION}" \
+            "Проекты" "Новый проект" "Настройки" "Шаблон папок" "Обновить Studio Tools" "Выход") \
+            || return 0
+        case "$sel" in
+            "Проекты")               _browse_projects ;;
+            "Новый проект")          cmd_new ;;
+            "Настройки")             cmd_settings ;;
+            "Шаблон папок")          _reveal "$TEMPLATE_DIR" ;;
+            "Обновить Studio Tools") cmd_update ;;
+            "Выход")                 return 0 ;;
+        esac
+    done
+}
+
+_browse_projects() {
+    local chosen
+    while true; do
+        chosen=$(_pick_project "Проекты") || return 0
+        _project_menu "$chosen"
+    done
+}
+
+# Проект выбран один раз — дальше любые действия с ним, пока не нажат Esc
+_project_menu() {
+    local chosen="$1" act
+    cmd_status "$chosen"
+    while true; do
+        # после архивирования папки на SSD больше нет — возвращаемся к списку
+        [[ -d "$(_project_ssd_path "$chosen")" ]] || return 0
+        act=$(_choose "Проекты › ${chosen}" \
+            "Статус" "Синхронизировать footage" "Media Log (CSV)" "Открыть папку" "Архивировать" "$_BACK") \
+            || return 0
+        case "$act" in
+            "Статус")                   cmd_status  "$chosen" ;;
+            "Синхронизировать footage") cmd_sync    "$chosen" ;;
+            "Media Log (CSV)")          cmd_meta    "$chosen" ;;
+            "Открыть папку")            cmd_open    "$chosen" ;;
+            "Архивировать")             cmd_archive "$chosen" ;;
+            "$_BACK")                   return 0 ;;
         esac
     done
 }
@@ -596,9 +637,8 @@ cmd_meta() {
         print -P "%F{red}✗ mediainfo не установлен. Запусти: brew install mediainfo%f\n"; return 1
     fi
 
-    local chosen
-    chosen=$(_pick_project " Media Log ")
-    [[ -z "$chosen" ]] && return
+    local chosen="$1"
+    [[ -n "$chosen" ]] || chosen=$(_pick_project "Media Log") || return
 
     local SSD_PROJECT=$(_project_ssd_path "$chosen")
     local CSV_OUT="${SSD_PROJECT}/00_Admin/media_log.csv"
