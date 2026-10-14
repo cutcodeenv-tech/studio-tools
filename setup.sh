@@ -61,16 +61,16 @@ case "$_OS" in
         ;;
 esac
 
-# ── fzf ───────────────────────────────────────────────────────────────────────
-if ! command -v fzf &>/dev/null; then
-    printf "→ Устанавливаю fzf...\n"
+# ── gum (меню) ────────────────────────────────────────────────────────────────
+if ! command -v gum &>/dev/null; then
+    printf "→ Устанавливаю gum...\n"
     case "$_OS" in
-        macos)   brew install fzf ;;
-        windows) scoop install fzf ;;
-        linux)   sudo apt-get install -y fzf 2>/dev/null || sudo dnf install -y fzf 2>/dev/null || printf "  Установи fzf вручную\n" ;;
+        macos)   brew install gum ;;
+        windows) scoop install charm-gum ;;
+        linux)   brew install gum 2>/dev/null || printf "  Установи gum: https://github.com/charmbracelet/gum#installation\n" ;;
     esac
 else
-    printf "✓ fzf\n"
+    printf "✓ gum\n"
 fi
 
 # ── mediainfo (для proj meta) ─────────────────────────────────────────────────

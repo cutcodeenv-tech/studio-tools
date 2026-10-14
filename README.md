@@ -17,8 +17,8 @@ git clone https://github.com/cutcodeenv-tech/studio-tools.git ~/.studio-tools &&
 ```
 
 `setup.sh` определяет систему и ставит зависимости:
-- macOS: Homebrew → fzf, mediainfo
-- Windows: Scoop → zsh, fzf, mediainfo
+- macOS: Homebrew → [gum](https://github.com/charmbracelet/gum) (меню), mediainfo
+- Windows: Scoop → zsh, gum, mediainfo
 
 ## Использование
 
@@ -26,21 +26,38 @@ git clone https://github.com/cutcodeenv-tech/studio-tools.git ~/.studio-tools &&
 proj
 ```
 
-Открывается главное меню. После каждой команды оно возвращается, выход — Esc.
+Открывается главное меню. Навигация от проекта: выбираешь проект один раз и делаешь с ним что нужно.
 
 ```
-╭─ Studio Tools ────────────────╮
-│ ▶ Новый проект                │
-│   Открыть папку проекта       │
-│   Синхронизировать footage    │
-│   Статус проекта              │
-│   Архивировать проект         │
-│   Media Log (CSV)             │
-│   Настройки                   │
-│   Шаблон папок                │
-│   Обновить Studio Tools       │
-╰───────────────────────────────╯
+Studio Tools
+▸ Проекты
+  Новый проект
+  Настройки
+  Шаблон папок
+  Обновить Studio Tools
+  Выход
+
+Проекты (3)  · Esc Esc — назад
+› Поиск…
+▸ 1  14 окт 2026   Nike Promo     Personal
+  2  10 окт 2026   Alpha          Clients
+  3  01 дек 2025   Old Wedding    Personal
+
+Проекты › Nike Promo · Personal
+▸ Статус
+  Синхронизировать footage
+  Media Log (CSV)
+  Открыть папку
+  Архивировать
+  ← Назад
 ```
+
+Проекты пронумерованы и отсортированы по дате создания папки — сверху последний созданный.
+
+- **↑↓** — выбор, **Enter** — открыть
+- **Esc** — на уровень выше (в списке проектов с поиском — Esc дважды)
+- **Ctrl+C** — выход из приложения
+- В списке проектов можно сразу печатать — поиск по названию
 
 Каждую команду можно вызвать и напрямую:
 
