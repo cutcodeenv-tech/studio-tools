@@ -2,8 +2,9 @@
 
 echo "\n▶ Studio Tools — Uninstall\n"
 
-rm -f "$HOME/bin/proj"
-echo "✓ ~/bin/proj удалён"
+rm -f "$HOME/bin/proj" "$HOME/bin/sf"
+rm -rf "$HOME/bin/minfo.app"
+echo "✓ ~/bin/proj, ~/bin/sf удалены"
 
 rm -rf "$HOME/.studio-tools"
 echo "✓ ~/.studio-tools удалён"

@@ -1,5 +1,8 @@
 #!/usr/bin/env zsh
 
+# Без этого повторный `local x` внутри цикла печатает "x=значение"
+setopt typeset_silent
+
 # ── КОНФИГ ──────────────────────────────────────────────────────────────────
 STUDIO_DIR="$HOME/.studio-tools"
 CONFIG_FILE="${STUDIO_DIR}/config"
@@ -67,36 +70,6 @@ _check_deps() {
         esac
         _any=true
     fi
-    if ! command -v mpv &>/dev/null; then
-        print -P "%F{cyan}  → Устанавливаю mpv (аудио/видео)...%f"
-        case "$_OS" in
-            macos)   brew install mpv ;;
-            windows) scoop install mpv ;;
-        esac
-        _any=true
-    fi
-
-    local _font_ok=false
-    case "$_OS" in
-        macos)
-            for _d in "$HOME/Library/Fonts" "/Library/Fonts"; do
-                ls "$_d" 2>/dev/null | grep -qi "JetBrainsMono.*Nerd" && { _font_ok=true; break; }
-            done
-            ;;
-        windows)
-            ls "$HOME/AppData/Local/Microsoft/Windows/Fonts" 2>/dev/null | grep -qi "JetBrainsMono" && _font_ok=true
-            ;;
-    esac
-    if [[ "$_font_ok" == false ]]; then
-        print -P "%F{cyan}  → Устанавливаю JetBrains Mono Nerd Font...%f"
-        case "$_OS" in
-            macos)   brew install --cask font-jetbrains-mono-nerd-font ;;
-            windows) scoop bucket add nerd-fonts 2>/dev/null; scoop install JetBrainsMono-NF ;;
-        esac
-        _any=true
-        print -P "%F{yellow}  ⚠  Выбери 'JetBrainsMono Nerd Font' в настройках терминала%f"
-    fi
-
     [[ "$_any" == true ]] && print ""
     touch "$_cache"
     return 0
@@ -152,6 +125,18 @@ copy_with_progress() {
         && printf "\r  \033[32m✓\033[0m  \033[90m[%s]\033[0m 100%%  %s\n" "$full_bar" "$label" \
         || printf "\r  \033[31m✗\033[0m  копирование не удалось: %s\n" "$label"
     return $_rc
+}
+
+# ── ОТКРЫТЬ ПАПКУ ────────────────────────────────────────────────────────────
+# Системный файловый менеджер: Finder / Проводник / xdg-open
+_reveal() {
+    local dir="$1"
+    print -P "  %F{240}${dir}%f"
+    case "$_OS" in
+        macos)   open "$dir" ;;
+        windows) explorer.exe "$(cygpath -w "$dir")" ;;
+        *)       command -v xdg-open &>/dev/null && xdg-open "$dir" &>/dev/null & ;;
+    esac
 }
 
 # ── ЗАПИСЬ В КОНФИГ ──────────────────────────────────────────────────────────
@@ -292,10 +277,8 @@ cmd_new() {
     $hdd_ok || print -P "  %F{yellow}⚠%f  HDD не смонтирован — папки камер на HDD не созданы"
 
     print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f"
-    print -P "%F{cyan}│%f Открыть в Nimble Commander? [Y/n]: \c"; read OPEN_NC
-    if [[ "$OPEN_NC" != "n" && "$OPEN_NC" != "N" ]]; then
-        open -a "Nimble Commander" "$SSD_ROOT"
-    fi
+    print -P "%F{cyan}│%f Открыть папку? [y/N]: \c"; read OPEN_DIR
+    [[ "$OPEN_DIR" == (y|Y) ]] && _reveal "$SSD_ROOT"
     print ""
 }
 
@@ -400,7 +383,7 @@ cmd_open() {
     local chosen
     chosen=$(_pick_project " Открыть проект ")
     [[ -z "$chosen" ]] && return
-    open -a "Nimble Commander" "$(_project_ssd_path "$chosen")"
+    _reveal "$(_project_ssd_path "$chosen")"
 }
 
 # ── proj archive ─────────────────────────────────────────────────────────────
@@ -535,7 +518,7 @@ cmd_settings() {
         [[ -z "$selected" ]] && continue
 
         if [[ "$selected" == *"Шаблон папок"* ]]; then
-            open -a "Nimble Commander" "$TEMPLATE_DIR"; continue
+            _reveal "$TEMPLATE_DIR"; continue
         fi
 
         local setting_key setting_val
@@ -568,28 +551,34 @@ cmd_settings() {
     done
 }
 
-# ── launcher (Cmd+P из NC) ────────────────────────────────────────────────────
+# ── главное меню ─────────────────────────────────────────────────────────────
+# Крутится, пока не нажат Esc: вывод команды остаётся над меню
 cmd_menu() {
+    [[ -f "$_UPDATE_FILE" ]] && \
+        print -P "%F{yellow}  ⬆  Доступно обновление → Обновить Studio Tools%f"
     local action
-    action=$(printf \
-        "  Новый проект\n  Открыть проект\n  Синхронизировать footage\n  Статус проекта\n  Архивировать проект\n  Media Log (CSV)\n  Настройки\n  Шаблон папок\n  Обновить Studio Tools" \
-        | fzf \
-        --prompt="  > " --height=13 --layout=reverse --border=rounded \
-        --border-label=" Studio Tools " \
-        --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-        --pointer="▶" --no-multi)
-    [[ -z "$action" ]] && return
-    case "$action" in
-        *"Новый"*)     cmd_new ;;
-        *"Открыть"*)   cmd_open ;;
-        *"Синхрон"*)   cmd_sync ;;
-        *"Статус"*)    cmd_status ;;
-        *"Архив"*)     cmd_archive ;;
-        *"Media Log"*) cmd_meta ;;
-        *"Настройки"*) cmd_settings ;;
-        *"Шаблон"*)    open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
-        *"Обновить"*)  cmd_update ;;
-    esac
+    while true; do
+        action=$(printf \
+            "  Новый проект\n  Открыть папку проекта\n  Синхронизировать footage\n  Статус проекта\n  Архивировать проект\n  Media Log (CSV)\n  Настройки\n  Шаблон папок\n  Обновить Studio Tools" \
+            | fzf \
+            --prompt="  > " --height=13 --layout=reverse --border=rounded \
+            --border-label=" Studio Tools ${PROJ_VERSION} " \
+            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
+            --header="  Enter: выбрать   Esc: выход" \
+            --pointer="▶" --no-multi)
+        [[ -z "$action" ]] && return
+        case "$action" in
+            *"Новый"*)     cmd_new ;;
+            *"Открыть"*)   cmd_open ;;
+            *"Синхрон"*)   cmd_sync ;;
+            *"Статус"*)    cmd_status ;;
+            *"Архив"*)     cmd_archive ;;
+            *"Media Log"*) cmd_meta ;;
+            *"Настройки"*) cmd_settings ;;
+            *"Шаблон"*)    _reveal "$TEMPLATE_DIR" ;;
+            *"Обновить"*)  cmd_update ;;
+        esac
+    done
 }
 
 # ── proj meta ────────────────────────────────────────────────────────────────
@@ -688,25 +677,12 @@ cmd_deploy() {
         print -P "  %F{green}✓%f  bin/sf"
     fi
 
-    if [[ "$_OS" == "macos" && -f "${STUDIO_DIR}/nimble-commander/minfo.applescript" ]]; then
-        osacompile -o "$HOME/bin/minfo.app" "${STUDIO_DIR}/nimble-commander/minfo.applescript" 2>/dev/null \
-            && print -P "  %F{green}✓%f  minfo.app" \
-            || print -P "  %F{yellow}⚠%f  minfo.app не скомпилирован"
-    fi
-
-    if [[ "$_OS" == "macos" ]]; then
-        local _nc_cfg="$HOME/Library/Application Support/Nimble Commander/Config/Config.json"
-        local _nc_py="${STUDIO_DIR}/nimble-commander/tools.py"
-        if [[ -f "$_nc_py" && -f "$_nc_cfg" ]]; then
-            python3 "$_nc_py" "$_nc_cfg" \
-                && print -P "  %F{green}✓%f  Nimble Commander (тема + настройки)" \
-                || print -P "  %F{yellow}⚠%f  NC: закрой приложение и повтори proj update"
-        fi
-    fi
+    # остаток интеграции с Nimble Commander из старых версий
+    rm -rf "$HOME/bin/minfo.app"
 
     rm -f "$_UPDATE_FILE"
     local ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null)
-    print -P "\n%F{green}%B✅ Обновлено до ${ver}. Перезапусти NC.%f%b\n"
+    print -P "\n%F{green}%B✅ Обновлено до ${ver}.%f%b\n"
 }
 
 # ── proj help ────────────────────────────────────────────────────────────────
@@ -714,17 +690,16 @@ cmd_help() {
     print -P "
 %B%F{cyan}proj ${PROJ_VERSION}%f%b — Studio Tools
 
-  %Bproj%b                Открыть проекты в Nimble Commander
+  %Bproj%b                Главное меню
   %Bproj new%b            Создать новый проект
-  %Bproj open%b           Выбрать проект и открыть в Nimble Commander
+  %Bproj open%b           Открыть папку проекта в Finder
   %Bproj status%b         Статус проекта (HDD / симлинки / прокси)
   %Bproj sync%b           Синхронизировать footage с HDD
   %Bproj archive%b        Архивировать проект (SSD → HDD)
+  %Bproj meta%b           Media Log — CSV с метаданными footage
   %Bproj settings%b       Настройки (пути, шаблон папок)
-  %Bproj template%b       Открыть шаблон папок в Nimble Commander
+  %Bproj template%b       Открыть шаблон папок в Finder
   %Bproj update%b         Обновить studio-tools
-
-%F{240}  Из NC: Cmd+N — новый проект   Cmd+Shift+S — синхронизация   Cmd+Shift+I — статус   Cmd+P — меню%f
 "
 }
 
@@ -752,20 +727,12 @@ case "$1" in
     archive)  cmd_archive ;;
     meta)     cmd_meta ;;
     settings) cmd_settings ;;
-    template) open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
+    template) _reveal "$TEMPLATE_DIR" ;;
     menu)     cmd_menu ;;
     update)   cmd_update ;;
     _deploy)  cmd_deploy ;;
     help|-h|--help) cmd_help ;;
-    "")
-        [[ -f "$_UPDATE_FILE" ]] && \
-            print -P "%F{yellow}  ⬆  Доступно обновление → proj update%f"
-        if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
-            open -a "Nimble Commander" "$PROJECTS_PARENT_ROOT"
-        else
-            open -a "Nimble Commander" "$SSD_PROJECTS_ROOT"
-        fi
-        ;;
+    "")       cmd_menu ;;
     *)
         print -P "%F{red}Неизвестная команда: $1%f"
         cmd_help; exit 1
