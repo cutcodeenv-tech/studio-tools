@@ -73,18 +73,7 @@ else
     printf "✓ fzf\n"
 fi
 
-# ── Nimble Commander ─────────────────────────────────────────────────────────
-if [[ "$_OS" == "macos" ]]; then
-    if ! osascript -e 'id of app "Nimble Commander"' &>/dev/null 2>&1 && \
-       ! ls /Applications/Nimble\ Commander.app &>/dev/null 2>&1; then
-        printf "→ Устанавливаю Nimble Commander...\n"
-        brew install --cask nimble-commander
-    else
-        printf "✓ Nimble Commander\n"
-    fi
-fi
-
-# ── mpv + mediainfo + dust ────────────────────────────────────────────────────
+# ── mediainfo (для proj meta) ─────────────────────────────────────────────────
 _brew_install() {
     local pkg="$1"
     if ! command -v "$pkg" &>/dev/null; then
@@ -99,35 +88,7 @@ _brew_install() {
     fi
 }
 
-_brew_install mpv
 _brew_install mediainfo
-_brew_install dust
-
-# ── Nerd Font ─────────────────────────────────────────────────────────────────
-_font_ok=false
-case "$_OS" in
-    macos)
-        { ls ~/Library/Fonts 2>/dev/null || ls /Library/Fonts 2>/dev/null; } | grep -qi "JetBrainsMono.*Nerd" && _font_ok=true
-        ;;
-    windows)
-        ls "$USERPROFILE/AppData/Local/Microsoft/Windows/Fonts" 2>/dev/null | grep -qi "JetBrainsMono" && _font_ok=true
-        ;;
-    linux)
-        fc-list 2>/dev/null | grep -qi "JetBrains.*Nerd" && _font_ok=true
-        ;;
-esac
-
-if [[ "$_font_ok" == false ]]; then
-    printf "→ Устанавливаю JetBrains Mono Nerd Font...\n"
-    case "$_OS" in
-        macos)   brew install --cask font-jetbrains-mono-nerd-font ;;
-        windows) scoop bucket add nerd-fonts 2>/dev/null; scoop install JetBrainsMono-NF ;;
-        linux)   brew install --cask font-jetbrains-mono-nerd-font 2>/dev/null || printf "  Установи шрифт вручную\n" ;;
-    esac
-    printf "  ⚠  Выбери 'JetBrainsMono Nerd Font' в настройках терминала\n"
-else
-    printf "✓ JetBrains Mono Nerd Font\n"
-fi
 
 # ── ~/bin/proj + sf ───────────────────────────────────────────────────────────
 mkdir -p "$HOME/bin"
@@ -141,26 +102,8 @@ if [[ -f "$STUDIO_DIR/bin/sf" ]]; then
     printf "✓ sf → ~/bin/\n"
 fi
 
-if [[ "$_OS" == "macos" && -f "$STUDIO_DIR/nimble-commander/minfo.applescript" ]]; then
-    osacompile -o "$HOME/bin/minfo.app" "$STUDIO_DIR/nimble-commander/minfo.applescript" 2>/dev/null \
-        && printf "✓ minfo.app → ~/bin/\n" \
-        || printf "⚠  Не удалось скомпилировать minfo.app\n"
-fi
-
-# ── Nimble Commander: тема, настройки, инструменты ───────────────────────────
-if [[ "$_OS" == "macos" ]]; then
-    _NC_CONFIG="$HOME/Library/Application Support/Nimble Commander/Config/Config.json"
-    _NC_TOOLS_SRC="$STUDIO_DIR/nimble-commander/tools.py"
-    if [[ -f "$_NC_TOOLS_SRC" ]]; then
-        if [[ -f "$_NC_CONFIG" ]]; then
-            python3 "$_NC_TOOLS_SRC" "$_NC_CONFIG" && printf "✓ Nimble Commander (тема + настройки + инструменты)\n" \
-                || printf "⚠  Закрой Nimble Commander и повтори: bash ~/.studio-tools/setup.sh\n"
-        else
-            printf "⚠  Запусти Nimble Commander один раз, затем повтори:\n"
-            printf "   bash ~/.studio-tools/setup.sh\n"
-        fi
-    fi
-fi
+# остаток интеграции с Nimble Commander из старых версий
+rm -rf "$HOME/bin/minfo.app"
 
 # ── PATH ──────────────────────────────────────────────────────────────────────
 _add_path() {

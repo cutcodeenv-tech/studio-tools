@@ -1,5 +1,8 @@
 #!/usr/bin/env zsh
 
+# Без этого повторный `local x` внутри цикла печатает "x=значение"
+setopt typeset_silent
+
 # ── КОНФИГ ──────────────────────────────────────────────────────────────────
 STUDIO_DIR="$HOME/.studio-tools"
 CONFIG_FILE="${STUDIO_DIR}/config"
@@ -67,36 +70,6 @@ _check_deps() {
         esac
         _any=true
     fi
-    if ! command -v mpv &>/dev/null; then
-        print -P "%F{cyan}  → Устанавливаю mpv (аудио/видео)...%f"
-        case "$_OS" in
-            macos)   brew install mpv ;;
-            windows) scoop install mpv ;;
-        esac
-        _any=true
-    fi
-
-    local _font_ok=false
-    case "$_OS" in
-        macos)
-            for _d in "$HOME/Library/Fonts" "/Library/Fonts"; do
-                ls "$_d" 2>/dev/null | grep -qi "JetBrainsMono.*Nerd" && { _font_ok=true; break; }
-            done
-            ;;
-        windows)
-            ls "$HOME/AppData/Local/Microsoft/Windows/Fonts" 2>/dev/null | grep -qi "JetBrainsMono" && _font_ok=true
-            ;;
-    esac
-    if [[ "$_font_ok" == false ]]; then
-        print -P "%F{cyan}  → Устанавливаю JetBrains Mono Nerd Font...%f"
-        case "$_OS" in
-            macos)   brew install --cask font-jetbrains-mono-nerd-font ;;
-            windows) scoop bucket add nerd-fonts 2>/dev/null; scoop install JetBrainsMono-NF ;;
-        esac
-        _any=true
-        print -P "%F{yellow}  ⚠  Выбери 'JetBrainsMono Nerd Font' в настройках терминала%f"
-    fi
-
     [[ "$_any" == true ]] && print ""
     touch "$_cache"
     return 0
@@ -126,6 +99,7 @@ _copy_mode() {
 copy_with_progress() {
     local src="$1" dst="$2" label="$3"
     local total=$(_stat_size "$src")
+    (( total > 0 )) || total=1   # пустой файл — не делим на ноль
     local bar_width=30
     if [[ $(_copy_mode) == "rsync" ]]; then
         rsync --partial --inplace "$src" "$dst" 2>/dev/null &
@@ -153,6 +127,18 @@ copy_with_progress() {
     return $_rc
 }
 
+# ── ОТКРЫТЬ ПАПКУ ────────────────────────────────────────────────────────────
+# Системный файловый менеджер: Finder / Проводник / xdg-open
+_reveal() {
+    local dir="$1"
+    print -P "  %F{240}${dir}%f"
+    case "$_OS" in
+        macos)   open "$dir" ;;
+        windows) explorer.exe "$(cygpath -w "$dir")" ;;
+        *)       command -v xdg-open &>/dev/null && xdg-open "$dir" &>/dev/null & ;;
+    esac
+}
+
 # ── ЗАПИСЬ В КОНФИГ ──────────────────────────────────────────────────────────
 _config_set() {
     local key="$1" val="$2" tmpfile=$(mktemp) found=false
@@ -176,14 +162,18 @@ _config_del() {
 # С PROJECTS_PARENT_ROOT проекты лежат на глубине 2 (категория/проект),
 # без него — прямо в SSD_PROJECTS_ROOT. Имена начинаются с YYYY-MM-DD,
 # поэтому sort -r даёт свежие сверху надёжнее, чем ls -t.
+# Префикс срезаем через ${..#..}, а не sed: в путях вида "[001] Projects"
+# скобки для sed — регулярка, и префикс бы не совпал.
 _pick_project() {
     local label="${1:- Выберите проект }"
     local list
     if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
-        list=$(find "$PROJECTS_PARENT_ROOT" -mindepth 2 -maxdepth 2 -type d 2>/dev/null \
-            | sed "s|${PROJECTS_PARENT_ROOT}/||" | sort -r)
+        local -a dirs=( "${PROJECTS_PARENT_ROOT}"/*/*(N/) )
+        # сортируем по имени проекта (после "категория/"), а не по категории
+        list=$(print -rl -- "${(@)dirs#${PROJECTS_PARENT_ROOT}/}" | sort -t/ -k2,2r)
     else
-        list=$(ls -1 "$SSD_PROJECTS_ROOT" 2>/dev/null | sort -r)
+        local -a dirs=( "${SSD_PROJECTS_ROOT}"/*(N/:t) )
+        list=$(print -rl -- "${(@)dirs}" | sort -r)
     fi
     [[ -z "$list" ]] && return 1
     print -r -- "$list" | fzf \
@@ -229,7 +219,8 @@ cmd_new() {
     local TARGET_ROOT="$SSD_PROJECTS_ROOT"
     if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
         local chosen_dir
-        chosen_dir=$(ls -1 "$PROJECTS_PARENT_ROOT" 2>/dev/null | fzf \
+        local -a cats=( "${PROJECTS_PARENT_ROOT}"/*(N/:t) )
+        chosen_dir=$(print -rl -- "${(@)cats}" | fzf \
             --prompt="  Папка > " \
             --height=40% \
             --border=rounded \
@@ -243,7 +234,13 @@ cmd_new() {
     fi
 
     local DATE=$(date +%Y-%m-%d)
+    # / и : в имени дали бы вложенные папки (: в Finder отображается как /)
     local SAFE_NAME="${PROJECT_NAME// /_}"
+    SAFE_NAME="${SAFE_NAME//[\/:]/_}"
+    while [[ "$SAFE_NAME" == .* ]]; do SAFE_NAME="${SAFE_NAME#.}"; done
+    if [[ -z "$SAFE_NAME" ]]; then
+        print -P "%F{red}✗ Недопустимое название.%f\n"; return 1
+    fi
     local PROJECT_FOLDER_NAME="${DATE}_${SAFE_NAME}"
     local SSD_ROOT="${TARGET_ROOT}/${PROJECT_FOLDER_NAME}"
     local HDD_ROOT="${HDD_SOURCES_ROOT}/${PROJECT_FOLDER_NAME}"
@@ -267,23 +264,21 @@ cmd_new() {
         print -P "  %F{yellow}⚠%f  Шаблон Premiere не найден"
     fi
 
-    if [[ ! -d "$HDD_SOURCES_ROOT" ]]; then
-        print -P "  %F{yellow}⚠%f  HDD не смонтирован, камеры пропущены"
-    else
-        local ALPHABET=( {a..z} )
-        for (( i=1; i<=CAM_COUNT; i++ )); do
-            local CAM="Cam_${ALPHABET[$i]}"
-            mkdir -p "${SSD_ROOT}/02_Sources/Video/${CAM}/Proxy"
-            mkdir -p "${HDD_ROOT}/02_Sources/Video/${CAM}"
-            print -P "  %F{green}✓%f  ${CAM}"
-        done
-    fi
+    # Папки камер на SSD создаём всегда, на HDD — только если он смонтирован
+    local hdd_ok=true
+    [[ -d "$HDD_SOURCES_ROOT" ]] || hdd_ok=false
+    local ALPHABET=( {a..z} )
+    for (( i=1; i<=CAM_COUNT; i++ )); do
+        local CAM="Cam_${ALPHABET[$i]}"
+        mkdir -p "${SSD_ROOT}/02_Sources/Video/${CAM}/Proxy"
+        $hdd_ok && mkdir -p "${HDD_ROOT}/02_Sources/Video/${CAM}"
+        print -P "  %F{green}✓%f  ${CAM}"
+    done
+    $hdd_ok || print -P "  %F{yellow}⚠%f  HDD не смонтирован — папки камер на HDD не созданы"
 
     print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f"
-    print -P "%F{cyan}│%f Открыть в Nimble Commander? [Y/n]: \c"; read OPEN_NC
-    if [[ "$OPEN_NC" != "n" && "$OPEN_NC" != "N" ]]; then
-        open -a "Nimble Commander" "$SSD_ROOT"
-    fi
+    print -P "%F{cyan}│%f Открыть папку? [y/N]: \c"; read OPEN_DIR
+    [[ "$OPEN_DIR" == (y|Y) ]] && _reveal "$SSD_ROOT"
     print ""
 }
 
@@ -299,14 +294,16 @@ cmd_status() {
 
     print -P "\n%B%F{cyan}┌─ ${chosen}%f%b"
 
-    for ssd_cam in "${SSD_PROJECT}/02_Sources/Video"/Cam_*/; do
-        [[ -d "$ssd_cam" ]] || continue
+    local -a cams=( "${SSD_PROJECT}/02_Sources/Video"/Cam_*(N/) )
+    (( ${#cams} )) || print -P "%B%F{cyan}│%f%b  %F{yellow}⚠%f  Нет папок Cam_* в 02_Sources/Video"
+
+    for ssd_cam in "${cams[@]}"; do
         local cam_name=$(basename "$ssd_cam")
         local hdd_cam="${HDD_PROJECT}/02_Sources/Video/${cam_name}"
         local ssd_links=$(find "$ssd_cam" -maxdepth 1 -type l | wc -l | tr -d ' ')
         local hdd_files=0
         [[ -d "$hdd_cam" ]] && hdd_files=$(find "$hdd_cam" -maxdepth 1 -type f | wc -l | tr -d ' ')
-        local proxy_count=$(find "${ssd_cam}Proxy" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
+        local proxy_count=$(find "${ssd_cam}/Proxy" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
         (( total_hdd += hdd_files ))
         (( total_symlinks += ssd_links ))
         (( total_proxies += proxy_count ))
@@ -386,7 +383,7 @@ cmd_open() {
     local chosen
     chosen=$(_pick_project " Открыть проект ")
     [[ -z "$chosen" ]] && return
-    open -a "Nimble Commander" "$(_project_ssd_path "$chosen")"
+    _reveal "$(_project_ssd_path "$chosen")"
 }
 
 # ── proj archive ─────────────────────────────────────────────────────────────
@@ -403,19 +400,48 @@ cmd_archive() {
 
     local SSD_PROJECT=$(_project_ssd_path "$chosen")
     local HDD_PROJECT=$(_project_hdd_path "$chosen")
+    if [[ ! -d "$SSD_PROJECT" || "${SSD_PROJECT:A}" == "${HDD_PROJECT:A}" ]]; then
+        print -P "%F{red}✗ Некорректный путь проекта: ${SSD_PROJECT}%f\n"; return 1
+    fi
     local ssd_size=$(du -sh "$SSD_PROJECT" 2>/dev/null | cut -f1)
 
     print -P "%B▶ Проект:%b ${chosen}  (SSD: ${ssd_size})"
     print -P "  → ${HDD_PROJECT}"
-    print -P "  Симлинки будут удалены, папка на SSD — стёрта после переноса."
+    print -P "  Симлинки будут удалены, папка на SSD — стёрта после переноса и сверки."
     print -P "\n%F{yellow}Продолжить? [y/N]: %f\c"
     read CONFIRM </dev/tty
     if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
         print -P "%F{red}Отменено.%f\n"; return
     fi
 
-    # симлинки указывают на HDD — на архивной копии они не нужны
-    local links=$(find "$SSD_PROJECT" -type l | wc -l | tr -d ' ')
+    # Только обычные файлы: симлинки указывают на HDD, на архивной копии не нужны
+    local -a files=( "$SSD_PROJECT"/**/*(ND.) )
+    local f rel
+
+    # Файл с тем же путём уже есть на HDD, но другого размера — rsync молча
+    # перезаписал бы его. Останавливаемся до каких-либо изменений.
+    local -a conflicts
+    for f in "${files[@]}"; do
+        [[ "${f:t}" == (.DS_Store|._*) ]] && continue
+        rel="${f#${SSD_PROJECT}/}"
+        [[ -e "${HDD_PROJECT}/${rel}" ]] || continue
+        (( $(_stat_size "$f") == $(_stat_size "${HDD_PROJECT}/${rel}") )) || conflicts+=( "$rel" )
+    done
+    if (( ${#conflicts} )); then
+        print -P "\n%F{red}✗ На HDD уже есть другие файлы с теми же путями:%f"
+        for rel in "${conflicts[@]}"; do print -r -- "    $rel"; done
+        print -P "%F{red}  Архивирование остановлено, ничего не изменено.%f"
+        print -P "  Переименуй или удали лишнюю версию (на SSD или в ${HDD_PROJECT}) и повтори.\n"
+        return 1
+    fi
+
+    # Запоминаем симлинки (путь → цель), чтобы вернуть их, если перенос сорвётся
+    local links_f=$(mktemp)
+    local l
+    for l in "$SSD_PROJECT"/**/*(ND@); do
+        print -r -- "${l}"$'\t'"$(readlink "$l")"
+    done > "$links_f"
+    local links=$(wc -l < "$links_f" | tr -d ' ')
     find "$SSD_PROJECT" -type l -delete
     print -P "\n  %F{green}✓%f  Удалено симлинков: ${links}"
 
@@ -428,13 +454,38 @@ cmd_archive() {
         cp -Rp "$SSD_PROJECT/." "$HDD_PROJECT/" && _ok=true
     fi
 
+    # Сверка: каждый файл с SSD должен лежать на HDD и совпадать по размеру
+    local -a bad
     if [[ "$_ok" == true ]]; then
+        print -P "  %F{yellow}⟳%f  Сверяю ${#files} файлов..."
+        for f in "${files[@]}"; do
+            rel="${f#${SSD_PROJECT}/}"
+            if [[ ! -f "${HDD_PROJECT}/${rel}" ]] || \
+               (( $(_stat_size "$f") != $(_stat_size "${HDD_PROJECT}/${rel}") )); then
+                bad+=( "$rel" )
+            fi
+        done
+        (( ${#bad} )) && _ok=false
+    fi
+
+    if [[ "$_ok" == true ]]; then
+        rm -f "$links_f"
         rm -rf "$SSD_PROJECT"
         print -P "  %F{green}✓%f  Папка на SSD удалена"
         [[ "$_OS" == "macos" ]] && afplay /System/Library/Sounds/Glass.aiff 2>/dev/null || true
         print -P "\n%F{green}%B✅ Проект в архиве:%b ${HDD_PROJECT}  (освобождено ~${ssd_size})%f\n"
     else
-        print -P "\n%F{red}✗ Ошибка переноса — папка на SSD сохранена: ${SSD_PROJECT}%f\n"
+        local t
+        while IFS=$'\t' read -r l t; do
+            [[ -e "$l" || -L "$l" ]] || ln -s "$t" "$l"
+        done < "$links_f"
+        rm -f "$links_f"
+        if (( ${#bad} )); then
+            print -P "\n%F{red}✗ Не сошлись после копирования (${#bad}):%f"
+            for rel in "${bad[@]:0:20}"; do print -r -- "    $rel"; done
+            (( ${#bad} > 20 )) && print -r -- "    … и ещё $(( ${#bad} - 20 ))"
+        fi
+        print -P "\n%F{red}✗ Ошибка переноса — папка на SSD и симлинки сохранены: ${SSD_PROJECT}%f\n"
         return 1
     fi
 }
@@ -467,7 +518,7 @@ cmd_settings() {
         [[ -z "$selected" ]] && continue
 
         if [[ "$selected" == *"Шаблон папок"* ]]; then
-            open -a "Nimble Commander" "$TEMPLATE_DIR"; continue
+            _reveal "$TEMPLATE_DIR"; continue
         fi
 
         local setting_key setting_val
@@ -500,31 +551,46 @@ cmd_settings() {
     done
 }
 
-# ── launcher (Cmd+P из NC) ────────────────────────────────────────────────────
+# ── главное меню ─────────────────────────────────────────────────────────────
+# Крутится, пока не нажат Esc: вывод команды остаётся над меню
 cmd_menu() {
+    [[ -f "$_UPDATE_FILE" ]] && \
+        print -P "%F{yellow}  ⬆  Доступно обновление → Обновить Studio Tools%f"
     local action
-    action=$(printf \
-        "  Новый проект\n  Открыть проект\n  Синхронизировать footage\n  Статус проекта\n  Архивировать проект\n  Media Log (CSV)\n  Настройки\n  Шаблон папок\n  Обновить Studio Tools" \
-        | fzf \
-        --prompt="  > " --height=13 --layout=reverse --border=rounded \
-        --border-label=" Studio Tools " \
-        --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
-        --pointer="▶" --no-multi)
-    [[ -z "$action" ]] && return
-    case "$action" in
-        *"Новый"*)     cmd_new ;;
-        *"Открыть"*)   cmd_open ;;
-        *"Синхрон"*)   cmd_sync ;;
-        *"Статус"*)    cmd_status ;;
-        *"Архив"*)     cmd_archive ;;
-        *"Media Log"*) cmd_meta ;;
-        *"Настройки"*) cmd_settings ;;
-        *"Шаблон"*)    open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
-        *"Обновить"*)  cmd_update ;;
-    esac
+    while true; do
+        action=$(printf \
+            "  Новый проект\n  Открыть папку проекта\n  Синхронизировать footage\n  Статус проекта\n  Архивировать проект\n  Media Log (CSV)\n  Настройки\n  Шаблон папок\n  Обновить Studio Tools" \
+            | fzf \
+            --prompt="  > " --height=13 --layout=reverse --border=rounded \
+            --border-label=" Studio Tools ${PROJ_VERSION} " \
+            --color="border:#5fafff,label:#5fafff,prompt:#5fafff,pointer:#ff875f" \
+            --header="  Enter: выбрать   Esc: выход" \
+            --pointer="▶" --no-multi)
+        [[ -z "$action" ]] && return
+        case "$action" in
+            *"Новый"*)     cmd_new ;;
+            *"Открыть"*)   cmd_open ;;
+            *"Синхрон"*)   cmd_sync ;;
+            *"Статус"*)    cmd_status ;;
+            *"Архив"*)     cmd_archive ;;
+            *"Media Log"*) cmd_meta ;;
+            *"Настройки"*) cmd_settings ;;
+            *"Шаблон"*)    _reveal "$TEMPLATE_DIR" ;;
+            *"Обновить"*)  cmd_update ;;
+        esac
+    done
 }
 
 # ── proj meta ────────────────────────────────────────────────────────────────
+# Каждое поле в кавычках, внутренние " удваиваются (RFC 4180) —
+# запятые и кавычки в именах файлов не ломают колонки
+_csv_row() {
+    local -a out
+    local f
+    for f in "$@"; do out+=( "\"${f//\"/\"\"}\"" ); done
+    print -r -- "${(j:,:)out}"
+}
+
 cmd_meta() {
     if ! command -v mediainfo &>/dev/null; then
         print -P "%F{red}✗ mediainfo не установлен. Запусти: brew install mediainfo%f\n"; return 1
@@ -542,12 +608,11 @@ cmd_meta() {
 
     printf "camera,filename,shot_date,duration,codec,resolution,fps,size_mb\n" > "$CSV_OUT"
 
-    for cam_dir in "${SSD_PROJECT}/02_Sources/Video"/Cam_*/; do
-        [[ -d "$cam_dir" ]] || continue
+    for cam_dir in "${SSD_PROJECT}/02_Sources/Video"/Cam_*(N/); do
         local cam_name=$(basename "$cam_dir")
         print -P "  %B%F{cyan}📁 ${cam_name}%f%b"
 
-        for f in "${cam_dir}"*(N-.); do
+        for f in "${cam_dir}/"*(N-.); do
             local filename=$(basename "$f")
             local ext="${filename:l:e}"
             [[ "$ext" == (mp4|mov|mxf|avi|r3d|braw|mts|m2ts) ]] || continue
@@ -572,8 +637,7 @@ cmd_meta() {
             size_mb=$(printf "%.1f" $(( ${size_bytes:-0} / 1048576.0 )) 2>/dev/null || echo "0")
             local res="${width}x${height}"
 
-            printf '%s,%s,"%s",%s,%s,%s,%s,%s\n' \
-                "$cam_name" "$filename" "$shot_date" "$duration" \
+            _csv_row "$cam_name" "$filename" "$shot_date" "$duration" \
                 "$codec" "$res" "$fps" "$size_mb" >> "$CSV_OUT"
 
             print -P "    %F{green}✓%f  ${filename}  %F{240}${shot_date}%f"
@@ -613,25 +677,12 @@ cmd_deploy() {
         print -P "  %F{green}✓%f  bin/sf"
     fi
 
-    if [[ "$_OS" == "macos" && -f "${STUDIO_DIR}/nimble-commander/minfo.applescript" ]]; then
-        osacompile -o "$HOME/bin/minfo.app" "${STUDIO_DIR}/nimble-commander/minfo.applescript" 2>/dev/null \
-            && print -P "  %F{green}✓%f  minfo.app" \
-            || print -P "  %F{yellow}⚠%f  minfo.app не скомпилирован"
-    fi
-
-    if [[ "$_OS" == "macos" ]]; then
-        local _nc_cfg="$HOME/Library/Application Support/Nimble Commander/Config/Config.json"
-        local _nc_py="${STUDIO_DIR}/nimble-commander/tools.py"
-        if [[ -f "$_nc_py" && -f "$_nc_cfg" ]]; then
-            python3 "$_nc_py" "$_nc_cfg" \
-                && print -P "  %F{green}✓%f  Nimble Commander (тема + настройки)" \
-                || print -P "  %F{yellow}⚠%f  NC: закрой приложение и повтори proj update"
-        fi
-    fi
+    # остаток интеграции с Nimble Commander из старых версий
+    rm -rf "$HOME/bin/minfo.app"
 
     rm -f "$_UPDATE_FILE"
     local ver=$(git -C "$STUDIO_DIR" rev-parse --short HEAD 2>/dev/null)
-    print -P "\n%F{green}%B✅ Обновлено до ${ver}. Перезапусти NC.%f%b\n"
+    print -P "\n%F{green}%B✅ Обновлено до ${ver}.%f%b\n"
 }
 
 # ── proj help ────────────────────────────────────────────────────────────────
@@ -639,17 +690,16 @@ cmd_help() {
     print -P "
 %B%F{cyan}proj ${PROJ_VERSION}%f%b — Studio Tools
 
-  %Bproj%b                Открыть проекты в Nimble Commander
+  %Bproj%b                Главное меню
   %Bproj new%b            Создать новый проект
-  %Bproj open%b           Выбрать проект и открыть в Nimble Commander
+  %Bproj open%b           Открыть папку проекта в Finder
   %Bproj status%b         Статус проекта (HDD / симлинки / прокси)
   %Bproj sync%b           Синхронизировать footage с HDD
   %Bproj archive%b        Архивировать проект (SSD → HDD)
+  %Bproj meta%b           Media Log — CSV с метаданными footage
   %Bproj settings%b       Настройки (пути, шаблон папок)
-  %Bproj template%b       Открыть шаблон папок в Nimble Commander
+  %Bproj template%b       Открыть шаблон папок в Finder
   %Bproj update%b         Обновить studio-tools
-
-%F{240}  Из NC: Cmd+N — новый проект   Cmd+Shift+S — синхронизация   Cmd+Shift+I — статус   Cmd+P — меню%f
 "
 }
 
@@ -677,20 +727,12 @@ case "$1" in
     archive)  cmd_archive ;;
     meta)     cmd_meta ;;
     settings) cmd_settings ;;
-    template) open -a "Nimble Commander" "$TEMPLATE_DIR" ;;
+    template) _reveal "$TEMPLATE_DIR" ;;
     menu)     cmd_menu ;;
     update)   cmd_update ;;
     _deploy)  cmd_deploy ;;
     help|-h|--help) cmd_help ;;
-    "")
-        [[ -f "$_UPDATE_FILE" ]] && \
-            print -P "%F{yellow}  ⬆  Доступно обновление → proj update%f"
-        if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
-            open -a "Nimble Commander" "$PROJECTS_PARENT_ROOT"
-        else
-            open -a "Nimble Commander" "$SSD_PROJECTS_ROOT"
-        fi
-        ;;
+    "")       cmd_menu ;;
     *)
         print -P "%F{red}Неизвестная команда: $1%f"
         cmd_help; exit 1
