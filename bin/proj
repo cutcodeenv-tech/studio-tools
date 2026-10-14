@@ -211,11 +211,13 @@ _config_del() {
     mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"; unset "$1"; source "$CONFIG_FILE"
 }
 
-# ── ВЫБОР ПРОЕКТА ────────────────────────────────────────────────────────────
-# Проекты лежат в корне либо в папках-категориях внутри него. Проект дальше
-# везде передаётся путём относительно корня ("Категория/2026-05-19_Name"
-# или просто "2026-05-19_Name").
+# ── ПРОЕКТЫ И СЕРИИ ──────────────────────────────────────────────────────────
+# Корень → папки проектов (просто название: Nike) → серии внутри проекта
+# (2026-05-19_Teaser, со структурой из template/). Серия дальше везде
+# передаётся путём относительно корня: "Nike/2026-05-19_Teaser". Серии,
+# лежащие прямо в корне (старая плоская раскладка), тоже поддерживаются.
 _MONTHS=( янв фев мар апр мая июн июл авг сен окт ноя дек )
+typeset -ga _SORTED _EPOCHS
 
 _projects_root() {
     if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
@@ -225,79 +227,79 @@ _projects_root() {
     fi
 }
 
-# Папка проекта: дата в начале имени или шаблонные папки NN_* внутри
-# (00_Admin, 01_Project_Files…). Такие папки — сами проекты, внутрь не идём.
-_is_project() {
+# Серия: дата в начале имени или шаблонные папки NN_* внутри (00_Admin…)
+_is_series() {
     [[ "${1:t}" == [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]* ]] && return 0
     local -a inner=( "$1"/[0-9][0-9]_*(N/[1]) )
     (( ${#inner} ))
 }
 
-# Папки-категории: всё в корне, что не проект и не шаблонная NN_* папка
-_list_categories() {
+# Папки проектов в корне → $reply
+_list_projects() {
     local d
     reply=()
     for d in "$(_projects_root)"/*(N/); do
-        _is_project "$d" || [[ "${d:t}" == [0-9][0-9]_* ]] || reply+=( "$d" )
+        _is_series "$d" || [[ "${d:t}" == [0-9][0-9]_* ]] || reply+=( "$d" )
     done
 }
 
-# Все проекты → $reply: из корня и из категорий, но не глубже
-_list_projects() {
-    local d c
-    local -a found
+# Серии прямо в корне, без проекта (старая раскладка) → $reply
+_list_loose_series() {
+    local d
+    reply=()
     for d in "$(_projects_root)"/*(N/); do
-        if _is_project "$d"; then
-            found+=( "$d" )
-        elif [[ "${d:t}" != [0-9][0-9]_* ]]; then
-            for c in "$d"/*(N/); do
-                [[ "${c:t}" == [0-9][0-9]_* ]] || found+=( "$c" )
-            done
-        fi
+        _is_series "$d" && reply+=( "$d" )
     done
-    reply=( "${found[@]}" )
 }
 
-# Обе функции кладут результат в $REPLY — без $(...), чтобы список
-# из сотни проектов не порождал сотни процессов.
-# "2026-05-19_Nike_Promo" → "Nike Promo"
-_project_title() {
+# Серии внутри папки проекта → $reply
+_list_series() {
+    local d
+    reply=()
+    for d in "$1"/*(N/); do
+        [[ "${d:t}" == [0-9][0-9]_* ]] || reply+=( "$d" )
+    done
+}
+
+# "2026-05-19_Main_Spot" → "Main Spot", "Big_Brand" → "Big Brand" (в $REPLY)
+_title() {
     local t="${1:t}"
     t="${t#[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]}"
     t="${t#[_ -]}"; t="${t//_/ }"
     REPLY="${t:-${1:t}}"
 }
 
-# epoch → "19 мая 2026"
+# epoch → "19 мая 2026" (в $REPLY)
 _fmt_date() {
     local d m y
     strftime -s d '%d' "$1"; strftime -s m '%m' "$1"; strftime -s y '%Y' "$1"
     REPLY="$d ${_MONTHS[m]} $y"
 }
 
-# Таблица проектов, свежесозданные сверху:
-#    1  14 окт 2026   Nike Promo                 Clients
-# Дата — создание папки (birth time); если ФС её не знает — дата из имени,
-# в крайнем случае время изменения. Выбранный номер → путь проекта.
-_pick_project() {
-    local header="${1:-Выберите проект}"
-    local root=$(_projects_root)
-    _list_projects
-    local -a dirs=( "${reply[@]}" )
-    if (( ! ${#dirs} )); then
-        print -P "%F{yellow}  Проектов пока нет.%f" >&2; return 1
+# 1 серия, 2 серии, 5 серий (в $REPLY)
+_n_series() {
+    integer n=$1 m10=$(( $1 % 10 )) m100=$(( $1 % 100 ))
+    if   (( m10 == 1 && m100 != 11 )); then REPLY="$n серия"
+    elif (( m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) )); then REPLY="$n серии"
+    else REPLY="$n серий"
     fi
+}
 
-    # одним вызовом stat: "<создание> <изменение>" на каждую папку
-    local -a times rows
+# Папки по дате создания, новые сверху → $_SORTED, даты → $_EPOCHS.
+# Дата — создание папки (birth time, одним вызовом stat); если ФС её не
+# знает — дата из имени, в крайнем случае время изменения.
+_sort_by_created() {
+    local -a dirs=( "$@" ) times rows
+    _SORTED=(); _EPOCHS=()
+    (( $# )) || return 0
     if [[ "$_OS" == "macos" ]]; then
         times=( "${(@f)$(stat -f '%B %m' -- "${dirs[@]}" 2>/dev/null)}" )
     else
         times=( "${(@f)$(stat -c '%W %Y' -- "${dirs[@]}" 2>/dev/null)}" )
     fi
     integer i ep
-    local born
-    for (( i = 1; i <= ${#dirs}; i++ )); do
+    local born row
+    for (( i = 1; i <= $#; i++ )); do
         born="${times[i]%% *}"; ep=0
         if [[ "$born" == <1-> ]]; then
             ep=$born
@@ -307,58 +309,165 @@ _pick_project() {
         (( ep > 0 )) || ep="${times[i]##* }"
         rows+=( "${(l:12::0:)ep}"$'\t'"$i" )
     done
+    for row in "${(@On)rows}"; do
+        _SORTED+=( "${dirs[${row##*$'\t'}]}" )
+        _EPOCHS+=( $(( 10#${row%%$'\t'*} )) )
+    done
+}
 
-    local -a titles order lines
-    local row title cat
-    integer n=0 nw=${#${#dirs}} tw=10
-    for (( i = 1; i <= ${#dirs}; i++ )); do
-        _project_title "${dirs[i]}"; titles[i]="$REPLY"
+# Строки таблицы для $_SORTED: "  1  14 окт 2026   Название   <хвост>".
+# Аргументы — хвосты по одному на строку → $reply
+_table_lines() {
+    local -a tails=( "$@" ) titles
+    integer i tw=10 nw=${#${#_SORTED}}
+    reply=()
+    (( ${#_SORTED} )) || return 0
+    for (( i = 1; i <= ${#_SORTED}; i++ )); do
+        _title "${_SORTED[i]}"; titles[i]="$REPLY"
         (( ${#REPLY} > tw )) && tw=${#REPLY}
     done
     (( tw > 40 )) && tw=40
-    for row in "${(@On)rows}"; do
-        ep="${row%%$'\t'*}"; i="${row##*$'\t'}"
-        title="${titles[i]}"
-        (( ${#title} > tw )) && title="${title[1,tw-1]}…"
-        cat=""; [[ "${dirs[i]:h}" != "$root" ]] && cat="${${dirs[i]:h}:t}"
-        _fmt_date $ep
-        lines+=( "${(l:nw:)$(( ++n ))}  ${REPLY}   ${(r:tw:)title}   ${cat}" )
-        order+=( "${dirs[i]#${root}/}" )
+    local t
+    for (( i = 1; i <= ${#_SORTED}; i++ )); do
+        t="${titles[i]}"; (( ${#t} > tw )) && t="${t[1,tw-1]}…"
+        _fmt_date "${_EPOCHS[i]}"
+        reply+=( "${(l:nw:)i}  ${REPLY}   ${(r:tw:)t}   ${tails[i]}" )
     done
-
-    local sel
-    sel=$(print -rl -- "${lines[@]}" | _filter "$header (${#dirs})  · Esc Esc — назад") || return
-    [[ "$sel" =~ '^ *([0-9]+)' ]] || return 1
-    print -r -- "${order[${match[1]}]}"
 }
 
-_project_ssd_path() {
+# Номер в начале выбранной строки таблицы (в $REPLY)
+_row_num() {
+    [[ "$1" =~ '^ *([0-9]+)  ' ]] || return 1
+    REPLY="${match[1]}"
+}
+
+# Список проектов (и серий без проекта) с поиском → абсолютный путь
+_pick_entry() {
+    _list_projects;      local -a projs=( "${reply[@]}" )
+    _list_loose_series;  local -a loose=( "${reply[@]}" )
+    if (( ${#projs} + ${#loose} == 0 )); then
+        print -P "%F{yellow}  Проектов пока нет — создай в «Новый проект».%f" >&2; return 1
+    fi
+    _sort_by_created "${projs[@]}" "${loose[@]}"
+    local -a tails; local d
+    for d in "${_SORTED[@]}"; do
+        if _is_series "$d"; then
+            tails+=( "серия без проекта" )
+        else
+            _list_series "$d"; _n_series ${#reply}; tails+=( "$REPLY" )
+        fi
+    done
+    local -a sorted=( "${_SORTED[@]}" )
+    _table_lines "${tails[@]}"
+    local sel
+    sel=$(print -rl -- "${reply[@]}" | _filter "${1:-Проекты} (${#sorted})  · Esc Esc — назад") || return
+    _row_num "$sel" || return 1
+    print -r -- "${sorted[REPLY]}"
+}
+
+# Только папки проектов (для «Новая серия» из командной строки) → имя
+_pick_project_dir() {
+    _list_projects
+    if (( ! ${#reply} )); then
+        print -P "%F{yellow}  Проектов пока нет — создай: proj new-project%f" >&2; return 1
+    fi
+    _sort_by_created "${reply[@]}"
+    local -a sorted=( "${_SORTED[@]}" )
+    _table_lines
+    local sel
+    sel=$(print -rl -- "${reply[@]}" | _filter "${1:-Проект} · Esc Esc — назад") || return
+    _row_num "$sel" || return 1
+    print -r -- "${sorted[REPLY]:t}"
+}
+
+# Выбор серии для команд proj status/sync/… → путь серии от корня
+_pick_series() {
+    local root=$(_projects_root) entry
+    entry=$(_pick_entry "$1") || return
+    if _is_series "$entry"; then
+        print -r -- "${entry#${root}/}"; return
+    fi
+    _list_series "$entry"
+    if (( ! ${#reply} )); then
+        print -P "%F{yellow}  В проекте ${entry:t} пока нет серий.%f" >&2; return 1
+    fi
+    _sort_by_created "${reply[@]}"
+    local -a sorted=( "${_SORTED[@]}" )
+    _table_lines
+    local sel
+    sel=$(_choose "$1 › ${entry:t}" "${reply[@]}") || return
+    _row_num "$sel" || return 1
+    print -r -- "${sorted[REPLY]#${root}/}"
+}
+
+_series_ssd_path() {
     print -r -- "$(_projects_root)/$1"
 }
 
-# "Clients/2026-05-19_Nike_Promo" → "Nike Promo · Clients"
-_project_label() {
-    _project_title "$1"
+# HDD повторяет SSD: HDD/Проект/Серия. Серии, созданные раньше, лежат на HDD
+# плоско (HDD/Серия) — если вложенной папки нет, а плоская есть, берём её.
+_series_hdd_path() {
+    local nested="${HDD_SOURCES_ROOT}/$1" flat="${HDD_SOURCES_ROOT}/${1:t}"
+    if [[ "$1" == */* && ! -d "$nested" && -d "$flat" ]]; then
+        print -r -- "$flat"
+    else
+        print -r -- "$nested"
+    fi
+}
+
+# "Nike/2026-05-19_Main_Spot" → "Nike › Main Spot"
+_series_label() {
+    _title "$1"
     local label="$REPLY"
-    [[ "$1" == */* ]] && label+=" · ${1:h}"
+    if [[ "$1" == */* ]]; then
+        _title "${1:h}"; label="$REPLY › $label"
+    fi
     print -r -- "$label"
 }
 
-# На HDD проекты лежат плоско, без категорий — берём только имя проекта
-_project_hdd_path() {
-    print -r -- "${HDD_SOURCES_ROOT}/${1:t}"
+# Название → безопасное имя папки (в $REPLY): пробелы → _, / и : → _
+# (: в Finder отображается как /, оба дали бы вложенные папки)
+_safe_name() {
+    local n="${1// /_}"
+    n="${n//[\/:]/_}"
+    while [[ "$n" == .* ]]; do n="${n#.}"; done
+    REPLY="$n"
 }
 
 # ════════════════════════════════════════════════════════════════════════════
 # СУБКОМАНДЫ
 # ════════════════════════════════════════════════════════════════════════════
 
+# ── proj new-project ─────────────────────────────────────────────────────────
+# Проект — просто папка с названием; серии создаются внутри него
+cmd_new_project() {
+    local name
+    name=$(_input "Новый проект · название" "" "Например: Nike") || return
+    _safe_name "$name"
+    if [[ -z "$REPLY" ]]; then
+        print -P "%F{red}Отменено: пустое название.%f\n"; return 1
+    fi
+    local dir_name="$REPLY"
+    local ssd_dir="$(_projects_root)/${dir_name}"
+    if [[ -d "$ssd_dir" ]]; then
+        print -P "\n%F{red}✗ Проект уже существует: ${ssd_dir}%f\n"; return 1
+    fi
+    mkdir -p "$ssd_dir" || return 1
+    [[ -d "$HDD_SOURCES_ROOT" ]] && mkdir -p "${HDD_SOURCES_ROOT}/${dir_name}"
+    print -P "\n%F{green}%B✅ Проект создан:%b ${ssd_dir}%f\n"
+    _project_screen "$dir_name"
+}
+
 # ── proj new ─────────────────────────────────────────────────────────────────
-cmd_new() {
-    local H="Новый проект"
-    local PROJECT_NAME CAM_COUNT
-    PROJECT_NAME=$(_input "$H · название" "" "Например: Nike Promo") || return
-    if [[ -z "${PROJECT_NAME// /}" ]]; then
+# Новая серия внутри проекта: структура из template/ + папки камер
+cmd_new_series() {
+    local proj="$1"
+    [[ -n "$proj" ]] || proj=$(_pick_project_dir "Новая серия · проект") || return
+    _title "$proj"
+    local H="Новая серия · $REPLY"
+    local SERIES_NAME CAM_COUNT
+    SERIES_NAME=$(_input "$H · название" "" "Например: Main Spot") || return
+    if [[ -z "${SERIES_NAME// /}" ]]; then
         print -P "%F{red}Отменено: пустое название.%f\n"; return 1
     fi
     CAM_COUNT=$(_input "$H · сколько камер (1–10)" "2") || return
@@ -366,33 +475,20 @@ cmd_new() {
         CAM_COUNT=2
     fi
 
-    # Категорию спрашиваем, только если в корне они есть (а не одни проекты)
-    local TARGET_ROOT=$(_projects_root) chosen_dir
-    if [[ -n "$PROJECTS_PARENT_ROOT" && -d "$PROJECTS_PARENT_ROOT" ]]; then
-        _list_categories
-        if (( ${#reply} )); then
-            chosen_dir=$(print -rl -- "${(@)reply:t}" | _filter "$H · папка") || return
-            TARGET_ROOT="${TARGET_ROOT}/${chosen_dir}"
-        fi
-    fi
-
-    print -P "\n%B%F{cyan}┌─ ${H}%f%b"
-    print -P "%B%F{cyan}│%f%b  Название:  ${PROJECT_NAME}"
-    print -P "%B%F{cyan}│%f%b  Камер:     ${CAM_COUNT}"
-    [[ -n "$chosen_dir" ]] && print -P "%B%F{cyan}│%f%b  Папка:     ${chosen_dir}"
-    print -P "%B%F{cyan}└────────────────────────────────────────┘%f%b"
-
-    local DATE=$(date +%Y-%m-%d)
-    # / и : в имени дали бы вложенные папки (: в Finder отображается как /)
-    local SAFE_NAME="${PROJECT_NAME// /_}"
-    SAFE_NAME="${SAFE_NAME//[\/:]/_}"
-    while [[ "$SAFE_NAME" == .* ]]; do SAFE_NAME="${SAFE_NAME#.}"; done
+    _safe_name "$SERIES_NAME"
+    local SAFE_NAME="$REPLY"
     if [[ -z "$SAFE_NAME" ]]; then
         print -P "%F{red}✗ Недопустимое название.%f\n"; return 1
     fi
-    local PROJECT_FOLDER_NAME="${DATE}_${SAFE_NAME}"
-    local SSD_ROOT="${TARGET_ROOT}/${PROJECT_FOLDER_NAME}"
-    local HDD_ROOT="${HDD_SOURCES_ROOT}/${PROJECT_FOLDER_NAME}"
+    local SERIES_DIR="$(date +%Y-%m-%d)_${SAFE_NAME}"
+    local SSD_ROOT="$(_projects_root)/${proj}/${SERIES_DIR}"
+    local HDD_ROOT="${HDD_SOURCES_ROOT}/${proj}/${SERIES_DIR}"
+
+    print -P "\n%B%F{cyan}┌─ ${H}%f%b"
+    print -P "%B%F{cyan}│%f%b  Название:  ${SERIES_NAME}"
+    print -P "%B%F{cyan}│%f%b  Камер:     ${CAM_COUNT}"
+    print -P "%B%F{cyan}│%f%b  Папка:     ${proj}/${SERIES_DIR}"
+    print -P "%B%F{cyan}└────────────────────────────────────────┘%f%b"
 
     if [[ -d "$SSD_ROOT" ]]; then
         print -P "\n%F{red}✗ Папка уже существует: ${SSD_ROOT}%f\n"; return 1
@@ -403,7 +499,8 @@ cmd_new() {
 
     print -P "\n%F{yellow}Создаю структуру...%f"
 
-    cp -r "${TEMPLATE_DIR}/." "$SSD_ROOT/"
+    mkdir -p "$SSD_ROOT" && cp -r "${TEMPLATE_DIR}/." "$SSD_ROOT/"
+    find "$SSD_ROOT" -name .gitkeep -delete 2>/dev/null   # служебные файлы репо
     print -P "  %F{green}✓%f  Папки SSD"
 
     if [[ -f "$PREMIERE_TEMPLATE" ]]; then
@@ -426,19 +523,19 @@ cmd_new() {
     $hdd_ok || print -P "  %F{yellow}⚠%f  HDD не смонтирован — папки камер на HDD не созданы"
 
     print -P "\n%F{green}%B✅ Готово:%b ${SSD_ROOT}%f\n"
-    _confirm "Открыть папку проекта?" && _reveal "$SSD_ROOT"
+    _confirm "Открыть папку серии?" && _reveal "$SSD_ROOT"
 }
 
 # ── proj status ───────────────────────────────────────────────────────────────
 cmd_status() {
     local chosen="$1"
-    [[ -n "$chosen" ]] || chosen=$(_pick_project "Статус проекта") || return
+    [[ -n "$chosen" ]] || chosen=$(_pick_series "Статус серии") || return
 
-    local SSD_PROJECT=$(_project_ssd_path "$chosen")
-    local HDD_PROJECT=$(_project_hdd_path "$chosen")
+    local SSD_PROJECT=$(_series_ssd_path "$chosen")
+    local HDD_PROJECT=$(_series_hdd_path "$chosen")
     local total_hdd=0 total_symlinks=0 total_proxies=0
 
-    print -P "\n%B%F{cyan}┌─ $(_project_label "$chosen")%f%b"
+    print -P "\n%B%F{cyan}┌─ $(_series_label "$chosen")%f%b"
 
     local -a cams=( "${SSD_PROJECT}/02_Sources/Video"/Cam_*(N/) )
     (( ${#cams} )) || print -P "%B%F{cyan}│%f%b  %F{yellow}⚠%f  Нет папок Cam_* в 02_Sources/Video"
@@ -476,16 +573,16 @@ cmd_sync() {
     fi
 
     local chosen="$1"
-    [[ -n "$chosen" ]] || chosen=$(_pick_project "Синхронизация") || return
+    [[ -n "$chosen" ]] || chosen=$(_pick_series "Синхронизация") || return
 
-    local SSD_PROJECT=$(_project_ssd_path "$chosen")
-    local HDD_PROJECT=$(_project_hdd_path "$chosen")
+    local SSD_PROJECT=$(_series_ssd_path "$chosen")
+    local HDD_PROJECT=$(_series_hdd_path "$chosen")
 
     if [[ ! -d "$HDD_PROJECT" ]]; then
-        print -P "%F{red}✗ Проект не найден на HDD: ${HDD_PROJECT}%f\n"; return 1
+        print -P "%F{red}✗ Серия не найдена на HDD: ${HDD_PROJECT}%f\n"; return 1
     fi
 
-    print -P "%B▶ Проект:%b ${chosen}\n"
+    print -P "%B▶ Серия:%b $(_series_label "$chosen")\n"
     local synced=0 skipped=0
 
     for hdd_cam in "${HDD_PROJECT}/02_Sources/Video"/Cam_*(N/); do
@@ -526,32 +623,32 @@ cmd_sync() {
 # ── proj open ────────────────────────────────────────────────────────────────
 cmd_open() {
     local chosen="$1"
-    [[ -n "$chosen" ]] || chosen=$(_pick_project "Открыть папку проекта") || return
-    _reveal "$(_project_ssd_path "$chosen")"
+    [[ -n "$chosen" ]] || chosen=$(_pick_series "Открыть папку серии") || return
+    _reveal "$(_series_ssd_path "$chosen")"
 }
 
 # ── proj archive ─────────────────────────────────────────────────────────────
 cmd_archive() {
-    print -P "\n%B%F{cyan}Архивирование проекта%f%b\n"
+    print -P "\n%B%F{cyan}Архивирование серии%f%b\n"
 
     if [[ ! -d "$HDD_SOURCES_ROOT" ]]; then
         print -P "%F{red}✗ HDD не смонтирован: ${HDD_SOURCES_ROOT}%f\n"; return 1
     fi
 
     local chosen="$1"
-    [[ -n "$chosen" ]] || chosen=$(_pick_project "Архивировать проект") || return
+    [[ -n "$chosen" ]] || chosen=$(_pick_series "Архивировать серию") || return
 
-    local SSD_PROJECT=$(_project_ssd_path "$chosen")
-    local HDD_PROJECT=$(_project_hdd_path "$chosen")
+    local SSD_PROJECT=$(_series_ssd_path "$chosen")
+    local HDD_PROJECT=$(_series_hdd_path "$chosen")
     if [[ ! -d "$SSD_PROJECT" || "${SSD_PROJECT:A}" == "${HDD_PROJECT:A}" ]]; then
         print -P "%F{red}✗ Некорректный путь проекта: ${SSD_PROJECT}%f\n"; return 1
     fi
     local ssd_size=$(du -sh "$SSD_PROJECT" 2>/dev/null | cut -f1)
 
-    print -P "%B▶ Проект:%b ${chosen}  (SSD: ${ssd_size})"
+    print -P "%B▶ Серия:%b $(_series_label "$chosen")  (SSD: ${ssd_size})"
     print -P "  → ${HDD_PROJECT}"
     print -P "  Симлинки будут удалены, папка на SSD — стёрта после переноса и сверки.\n"
-    if ! _confirm "Архивировать ${chosen:t}?"; then
+    if ! _confirm "Архивировать «$(_series_label "$chosen")»?"; then
         print -P "%F{red}Отменено.%f\n"; return
     fi
 
@@ -614,7 +711,7 @@ cmd_archive() {
         rm -rf "$SSD_PROJECT"
         print -P "  %F{green}✓%f  Папка на SSD удалена"
         [[ "$_OS" == "macos" ]] && afplay /System/Library/Sounds/Glass.aiff 2>/dev/null || true
-        print -P "\n%F{green}%B✅ Проект в архиве:%b ${HDD_PROJECT}  (освобождено ~${ssd_size})%f\n"
+        print -P "\n%F{green}%B✅ Серия в архиве:%b ${HDD_PROJECT}  (освобождено ~${ssd_size})%f\n"
     else
         local t
         while IFS=$'\t' read -r l t; do
@@ -635,7 +732,7 @@ cmd_archive() {
 cmd_settings() {
     local -a keys=( PROJECTS_PARENT_ROOT SSD_PROJECTS_ROOT HDD_SOURCES_ROOT PREMIERE_TEMPLATE )
     local -A names=(
-        PROJECTS_PARENT_ROOT "Корень с категориями"
+        PROJECTS_PARENT_ROOT "Папка проектов"
         SSD_PROJECTS_ROOT    "Проекты на SSD"
         HDD_SOURCES_ROOT     "Исходники на HDD"
         PREMIERE_TEMPLATE    "Шаблон Premiere"
@@ -682,8 +779,8 @@ cmd_settings() {
 }
 
 # ── главное меню ─────────────────────────────────────────────────────────────
-# Studio Tools → Проекты → <проект> → действие. Esc везде — на уровень выше,
-# вывод команд остаётся на экране над меню.
+# Studio Tools → Проекты → проект → серия → действие. Esc везде — на уровень
+# выше, вывод команд остаётся на экране над меню.
 cmd_menu() {
     [[ -f "$_UPDATE_FILE" ]] && \
         print -P "%F{yellow}  ⬆  Доступно обновление → «Обновить Studio Tools»%f"
@@ -695,7 +792,7 @@ cmd_menu() {
             || return 0
         case "$sel" in
             "Проекты")               _browse_projects ;;
-            "Новый проект")          cmd_new ;;
+            "Новый проект")          cmd_new_project ;;
             "Настройки")             cmd_settings ;;
             "Шаблон папок")          _reveal "$TEMPLATE_DIR" ;;
             "Обновить Studio Tools") cmd_update ;;
@@ -705,21 +802,49 @@ cmd_menu() {
 }
 
 _browse_projects() {
-    local chosen
+    local root=$(_projects_root) entry
     while true; do
-        chosen=$(_pick_project "Проекты") || return 0
-        _project_menu "$chosen"
+        entry=$(_pick_entry "Проекты") || return 0
+        if _is_series "$entry"; then
+            _series_menu "${entry#${root}/}"
+        else
+            _project_screen "${entry:t}"
+        fi
     done
 }
 
-# Проект выбран один раз — дальше любые действия с ним, пока не нажат Esc
-_project_menu() {
+# Экран проекта: новая серия, список серий (свежие сверху), папка проекта
+_project_screen() {
+    local proj="$1" pdir="$(_projects_root)/$1" sel
+    local -a sorted
+    _title "$proj"; local ptitle="$REPLY"
+    while true; do
+        [[ -d "$pdir" ]] || return 0
+        _list_series "$pdir"
+        _sort_by_created "${reply[@]}"
+        sorted=( "${_SORTED[@]}" )
+        _table_lines
+        _n_series ${#sorted}
+        sel=$(_choose "Проекты › ${ptitle}  (${REPLY})" \
+            "＋ Новая серия" "${reply[@]}" "Открыть папку проекта" "$_BACK") \
+            || return 0
+        case "$sel" in
+            "＋ Новая серия")         cmd_new_series "$proj" ;;
+            "Открыть папку проекта")  _reveal "$pdir" ;;
+            "$_BACK")                 return 0 ;;
+            *) _row_num "$sel" && _series_menu "${proj}/${sorted[REPLY]:t}" ;;
+        esac
+    done
+}
+
+# Серия выбрана один раз — дальше любые действия с ней, пока не нажат Esc
+_series_menu() {
     local chosen="$1" act
     cmd_status "$chosen"
     while true; do
-        # после архивирования папки на SSD больше нет — возвращаемся к списку
-        [[ -d "$(_project_ssd_path "$chosen")" ]] || return 0
-        act=$(_choose "Проекты › $(_project_label "$chosen")" \
+        # после архивирования папки на SSD больше нет — возвращаемся назад
+        [[ -d "$(_series_ssd_path "$chosen")" ]] || return 0
+        act=$(_choose "Проекты › $(_series_label "$chosen")" \
             "Статус" "Синхронизировать footage" "Media Log (CSV)" "Открыть папку" "Архивировать" "$_BACK") \
             || return 0
         case "$act" in
@@ -749,13 +874,13 @@ cmd_meta() {
     fi
 
     local chosen="$1"
-    [[ -n "$chosen" ]] || chosen=$(_pick_project "Media Log") || return
+    [[ -n "$chosen" ]] || chosen=$(_pick_series "Media Log") || return
 
-    local SSD_PROJECT=$(_project_ssd_path "$chosen")
+    local SSD_PROJECT=$(_series_ssd_path "$chosen")
     local CSV_OUT="${SSD_PROJECT}/00_Admin/media_log.csv"
     local count=0 skipped=0
 
-    print -P "\n%B%F{cyan}▶ Media Log:%b ${chosen}%f\n"
+    print -P "\n%B%F{cyan}▶ Media Log:%b $(_series_label "$chosen")%f\n"
 
     printf "camera,filename,shot_date,duration,codec,resolution,fps,size_mb\n" > "$CSV_OUT"
 
@@ -842,11 +967,12 @@ cmd_help() {
 %B%F{cyan}proj ${PROJ_VERSION}%f%b — Studio Tools
 
   %Bproj%b                Главное меню
-  %Bproj new%b            Создать новый проект
-  %Bproj open%b           Открыть папку проекта в Finder
-  %Bproj status%b         Статус проекта (HDD / симлинки / прокси)
+  %Bproj new-project%b    Создать проект (папку для серий)
+  %Bproj new%b            Создать серию в проекте
+  %Bproj open%b           Открыть папку серии в Finder
+  %Bproj status%b         Статус серии (HDD / симлинки / прокси)
   %Bproj sync%b           Синхронизировать footage с HDD
-  %Bproj archive%b        Архивировать проект (SSD → HDD)
+  %Bproj archive%b        Архивировать серию (SSD → HDD)
   %Bproj meta%b           Media Log — CSV с метаданными footage
   %Bproj settings%b       Настройки (пути, шаблон папок)
   %Bproj template%b       Открыть шаблон папок в Finder
@@ -871,7 +997,8 @@ cmd_help() {
 ) &>/dev/null &
 
 case "$1" in
-    new)      cmd_new ;;
+    new)      cmd_new_series ;;
+    new-project) cmd_new_project ;;
     open)     cmd_open ;;
     status)   cmd_status ;;
     sync)     cmd_sync ;;
